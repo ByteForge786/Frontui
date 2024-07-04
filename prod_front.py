@@ -127,7 +127,7 @@ def update_feedback(feedback_type, question):
 def main():
     init_app()
 
-    st.markdown('## NeuroFlake: AI-Powered Text-to-SQL for Snowflake')
+    st.markdown('## NeuroFlake: AI-Powered Data Insights for Snowflake')
 
     left_column, right_column = st.columns(2, gap="large")
 
@@ -207,17 +207,14 @@ def main():
 
     with left_column:
         st.markdown("""
-        Welcome to NeuroFlake! 🧠❄️
+        NhanceBot is an AI-powered Data Insight tool designed to help you interact with your Snowflake data warehouse using natural language.
+
+        - **Ask in Plain English**: No need for complex query languages - just ask questions as you normally would.
+        - **Instant Answers**: Get the information you need in seconds, without waiting for the IT department.
+        - **User-Friendly for Everyone**: From executives to analysts, everyone can now access data insights easily.
+        - **Save Time and Resources**: Focus on making decisions, not on figuring out how to get the data.
+        - **NhanceBot Gets Smarter with Use**: The more you use NhanceBot, the better it understands your business needs.
         
-        NeuroFlake is an AI-powered text-to-SQL tool designed to help you interact with your Snowflake data warehouse using natural language. Here's how it works:
-
-        1. **Ask a Question**: Type your question about your data in plain English.
-        2. **Generate SQL**: NeuroFlake will interpret your question and generate the appropriate SQL query.
-        3. **View Results**: The query will be executed on your Snowflake database, and the results will be displayed.
-        4. **Iterate**: Refine your question or ask follow-up questions to dive deeper into your data.
-
-        You can use the sample questions provided or create your own. NeuroFlake is here to make data analysis accessible to everyone, regardless of their SQL expertise.
-
         Let's explore your data together!
         """)
         
