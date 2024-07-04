@@ -3,7 +3,7 @@ warnings.filterwarnings('ignore')
 import pandas as pd
 import streamlit as st
 
-# Set page config with dark theme
+# Set page config
 st.set_page_config(page_title="NeuroFlake", layout="wide", initial_sidebar_state="collapsed")
 
 # Custom CSS for dark mode
@@ -21,7 +21,8 @@ dark_mode_css = """
         }
         
         /* Text input fields */
-        .stTextInput > div > div > input {
+        .stTextInput > div > div > input,
+        .stTextArea > div > div > textarea {
             background-color: #262730;
             color: #FAFAFA;
         }
@@ -33,7 +34,7 @@ dark_mode_css = """
         }
         
         /* DataFrames */
-        .dataframe {
+        .css-1ujwg6k, .css-1u7ky9e {
             background-color: #262730;
             color: #FAFAFA;
         }
