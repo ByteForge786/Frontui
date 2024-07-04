@@ -2,81 +2,81 @@ import warnings
 warnings.filterwarnings('ignore')
 import pandas as pd
 import streamlit as st
-import csv
-from datetime import datetime
+import os
 
-# Function to load data from CSV
-def load_data():
-    try:
-        return pd.read_csv('interactions.csv')
-    except FileNotFoundError:
-        return pd.DataFrame(columns=['timestamp', 'user_input', 'sql_response', 'query_result', 'feedback'])
-
-# Function to save data to CSV
-def save_data(df):
-    df.to_csv('interactions.csv', index=False)
-
-# Set page config with dark theme
+# Set page config
 st.set_page_config(page_title="NeuroFlake", layout="wide", initial_sidebar_state="collapsed")
+
+# Initialize CSV file
+csv_file = 'user_interactions.csv'
+if not os.path.exists(csv_file):
+    df = pd.DataFrame(columns=['question', 'result', 'upvote', 'downvote'])
+    df.to_csv(csv_file, index=False)
+
+# Load CSV file
+@st.cache_data
+def load_data():
+    data = pd.read_csv(csv_file)
+    return data
+
+data = load_data()
 
 # Custom CSS for dark mode
 dark_mode_css = """
     <style>
         /* Overall app background */
         .stApp {
-            background-color: #0E1117 !important;
-            color: #FAFAFA !important;
+            background-color: #0E1117;
+            color: #FAFAFA;
         }
         
         /* Sidebar */
-        [data-testid="stSidebar"] {
-            background-color: #262730 !important;
+        .css-1d391kg {
+            background-color: #262730;
         }
         
         /* Text input fields */
-        .stTextInput > div > div > input {
-            background-color: #262730 !important;
-            color: #FAFAFA !important;
+        .stTextInput > div > div > input,
+        .stTextArea > div > div > textarea {
+            background-color: #262730;
+            color: #FAFAFA;
         }
         
         /* Buttons */
         .stButton > button {
-            background-color: #4F8BF9 !important;
-            color: #FAFAFA !important;
+            background-color: #4F8BF9;
+            color: #FAFAFA;
         }
         
         /* DataFrames */
-        .dataframe {
-            background-color: #262730 !important;
-            color: #FAFAFA !important;
+        .css-1ujwg6k, .css-1u7ky9e {
+            background-color: #262730;
+            color: #FAFAFA;
         }
         
         /* Chat messages */
         .stChatMessage {
-            background-color: #262730 !important;
+            background-color: #262730;
         }
         
         /* Custom text boxes */
         .mytext {
-            border: 1px solid #4F8BF9 !important;
-            border-radius: 10px !important;
-            padding: 10px !important;
-            height: auto !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            text-align: center !important;
-            margin-bottom: 15px !important;
-            background-color: #262730 !important;
-            color: #FAFAFA !important;
+            border: 1px solid #4F8BF9;
+            border-radius: 10px;
+            padding: 10px;
+            height: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            margin-bottom: 15px;
+            background-color: #262730;
+            color: #FAFAFA;
         }
     </style>
 """
 
 st.markdown(dark_mode_css, unsafe_allow_html=True)
-
-# Load existing data
-data = load_data()
 
 if 'chat' not in st.session_state:
     st.session_state['chat'] = {
@@ -114,30 +114,32 @@ with right_column.container():
             result_response = "Query executed successfully. 5 rows returned."
             bot_response_2_placeholder.success(result_response)
             
-            # Save interaction to dataframe
-            new_row = pd.DataFrame({
-                'timestamp': [datetime.now()],
-                'user_input': [user_input],
-                'sql_response': [sql_response],
-                'query_result': [result_response],
-                'feedback': ['']
+            # Append the user interaction to the CSV
+            new_data = pd.DataFrame({
+                'question': [user_input],
+                'result': [result_response],
+                'upvote': [0],
+                'downvote': [0]
             })
-            data = pd.concat([data, new_row], ignore_index=True)
-            save_data(data)
+            new_data.to_csv(csv_file, mode='a', header=False, index=False)
 
     with button_column[1]:
         upvote_button = st.button("👍 Upvote", use_container_width=True)
         if upvote_button:
             button_info.success("Your feedback has been recorded. Thanks for helping improve NeuroFlake!")
-            data.loc[data.index[-1], 'feedback'] = 'upvote'
-            save_data(data)
+            # Update the last entry in the CSV file to indicate an upvote
+            data = pd.read_csv(csv_file)
+            data.at[data.index[-1], 'upvote'] = 1
+            data.to_csv(csv_file, index=False)
 
     with button_column[0]:
         downvote_button = st.button("👎 Downvote", use_container_width=True)
         if downvote_button:
             button_info.warning("We're sorry the result wasn't helpful. Your feedback will help us improve!")
-            data.loc[data.index[-1], 'feedback'] = 'downvote'
-            save_data(data)
+            # Update the last entry in the CSV file to indicate a downvote
+            data = pd.read_csv(csv_file)
+            data.at[data.index[-1], 'downvote'] = 1
+            data.to_csv(csv_file, index=False)
 
     st.markdown("##### Sample questions you can ask:")
     sample_questions = [
@@ -161,33 +163,32 @@ with right_column.container():
                 result_response = "Query executed successfully. Results would be displayed here."
                 bot_response_2_placeholder.success(result_response)
                 
-                # Save interaction to dataframe
-                new_row = pd.DataFrame({
-                    'timestamp': [datetime.now()],
-                    'user_input': [question],
-                    'sql_response': [sql_response],
-                    'query_result': [result_response],
-                    'feedback': ['']
+                # Append the user interaction to the CSV
+                new_data = pd.DataFrame({
+                    'question': [question],
+                    'result': [result_response],
+                    'upvote': [0],
+                    'downvote': [0]
                 })
-                data = pd.concat([data, new_row], ignore_index=True)
-                save_data(data)
+                new_data.to_csv(csv_file, mode='a', header=False, index=False)
 
 with left_column:
     st.markdown("""
-    ### Welcome to NeuroFlake! 🧠❄️
+    Welcome to NeuroFlake! 🧠❄️
     
-    Transform the way you interact with your Snowflake data warehouse:
-    
-    - **Natural Language Queries**: Ask questions in plain English
-    - **Instant SQL Generation**: Get accurate SQL queries in seconds
-    - **No SQL Expertise Required**: Empower all team members to access data
-    - **Time-Saving**: Focus on insights, not query writing
-    - **Continuous Learning**: NeuroFlake improves with every interaction
-    
-    Start exploring your data effortlessly today!
+    NeuroFlake is an AI-powered text-to-SQL tool designed to help you interact with your Snowflake data warehouse using natural language. Here's how it works:
+
+    1. **Ask a Question**: Type your question about your data in plain English.
+    2. **Generate SQL**: NeuroFlake will interpret your question and generate the appropriate SQL query.
+    3. **View Results**: The query will be executed on your Snowflake database, and the results will be displayed.
+    4. **Iterate**: Refine your question or ask follow-up questions to dive deeper into your data.
+
+    You can use the sample questions provided or create your own. NeuroFlake is here to make data analysis accessible to everyone, regardless of their SQL expertise.
+
+    Let's explore your data together!
     """)
     
-    st.markdown('##### Sample Table Preview:')
+    st.markdown('##### Sample Data Schema:')
     # This would typically be fetched from your Snowflake database
     data = {
         'Table': ['CUSTOMERS', 'ORDERS', 'PRODUCTS', 'SALES'],
