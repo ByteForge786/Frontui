@@ -208,3 +208,4 @@ with left_column:
     df = pd.DataFrame(data)
     
     st.dataframe(df, height=500, use_container_width=True)
+
