@@ -21,7 +21,7 @@ def load_data():
 
 data = load_data()
 
-# Custom CSS for dark mode
+# Custom CSS for dark mode and button hover effect
 dark_mode_css = """
     <style>
         /* Overall app background */
@@ -46,6 +46,12 @@ dark_mode_css = """
         .stButton > button {
             background-color: #4F8BF9;
             color: #FAFAFA;
+            transition: background-color 0.3s, color 0.3s; /* Added color transition */
+        }
+        
+        .stButton > button:hover {
+            background-color: #FF6347; /* Change to red on hover */
+            color: #FAFAFA; /* Ensure text remains white on hover */
         }
         
         /* DataFrames */
@@ -116,8 +122,8 @@ with right_column.container():
             
             # Append the user interaction to the CSV
             new_data = pd.DataFrame({
-                'question': [user_input],
-                'result': [result_response],
+                'question': [user_input.strip().replace('\n', ' ')],
+                'result': [result_response.strip().replace('\n', ' ')],
                 'upvote': [0],
                 'downvote': [0]
             })
@@ -126,7 +132,7 @@ with right_column.container():
     with button_column[1]:
         upvote_button = st.button("👍 Upvote", use_container_width=True)
         if upvote_button:
-            button_info.success("Your feedback has been recorded. Thanks for helping improve NeuroFlake!")
+            button_info.success("Thanks for your feedback! NeuroFlake Memory updated")
             # Update the last entry in the CSV file to indicate an upvote
             data = pd.read_csv(csv_file)
             data.at[data.index[-1], 'upvote'] = 1
