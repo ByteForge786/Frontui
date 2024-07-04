@@ -126,6 +126,15 @@ def update_feedback(feedback_type, question):
 # Main app
 def main():
     init_app()
+    """
+    # Load and display logo
+    logo_path = "path/to/your/logo.png"
+    if os.path.exists(logo_path):
+        logo = Image.open(logo_path)
+        st.image(logo, width=200)  # Adjust width as needed
+    else:
+        st.warning("Logo not found. Please check the path.")
+    """
 
     st.markdown('## NeuroFlake: AI-Powered Data Insights for Snowflake')
 
