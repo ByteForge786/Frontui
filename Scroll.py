@@ -1,4 +1,4 @@
-import warnings
+ import warnings
 warnings.filterwarnings('ignore')
 import pandas as pd
 import streamlit as st
@@ -147,8 +147,8 @@ def add_to_chat_history(question, sql_query, result_df):
 def auto_scroll_to_bottom():
     js = """
     <script>
-        var chatContainer = document.querySelector('.scrollable-container');
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        var rightContainer = document.querySelector('.right-container');
+        rightContainer.scrollTop = rightContainer.scrollHeight;
     </script>
     """
     st.markdown(js, unsafe_allow_html=True)
@@ -161,10 +161,9 @@ def main():
 
     st.markdown("""
     <style>
-    .scrollable-container {
-        height: 400px;
+    .right-container {
+        height: 600px;
         overflow-y: auto;
-        border: 1px solid #ccc;
         padding: 10px;
         border-radius: 5px;
     }
@@ -173,17 +172,43 @@ def main():
 
     left_column, right_column = st.columns(2, gap="large")
 
-    with right_column.container():
-        # Scrollable chat history
-        with st.container():
-            st.markdown('<div class="scrollable-container">', unsafe_allow_html=True)
-            for entry in st.session_state['chat_history']:
-                with st.chat_message(name="user", avatar="user"):
-                    st.markdown(entry['question'])
-                with st.chat_message(name="assistant", avatar="assistant"):
-                    st.code(entry['sql_query'], language="sql")
-                    st.dataframe(entry['result'])
-            st.markdown('</div>', unsafe_allow_html=True)
+    with left_column:
+        st.markdown("""
+        NhanceBot is an AI-powered Data Insight tool designed to help you interact with your Snowflake data warehouse using natural language.
+
+        - **Ask in Plain English**: No need for complex query languages - just ask questions as you normally would.
+        - **Instant Answers**: Get the information you need in seconds, without waiting for the IT department.
+        - **User-Friendly for Everyone**: From executives to analysts, everyone can now access data insights easily.
+        - **Save Time and Resources**: Focus on making decisions, not on figuring out how to get the data.
+        - **NhanceBot Gets Smarter with Use**: The more you use NhanceBot, the better it understands your business needs.
+        
+        Let's explore your data together!
+        """)
+        
+        st.markdown('##### Sample Data Schema:')
+        data = {
+            'Table': ['CUSTOMERS', 'ORDERS', 'PRODUCTS', 'SALES'],
+            'Columns': [
+                'customer_id, name, email, segment',
+                'order_id, customer_id, order_date, total_amount',
+                'product_id, name, category, price',
+                'sale_id, product_id, quantity, revenue'
+            ]
+        }
+        df = pd.DataFrame(data)
+        
+        st.dataframe(df, height=500, use_container_width=True)
+
+    with right_column:
+        st.markdown('<div class="right-container">', unsafe_allow_html=True)
+
+        # Display chat history
+        for entry in st.session_state['chat_history']:
+            with st.chat_message(name="user", avatar="user"):
+                st.markdown(entry['question'])
+            with st.chat_message(name="assistant", avatar="assistant"):
+                st.code(entry['sql_query'], language="sql")
+                st.dataframe(entry['result'])
 
         with st.chat_message(name="user", avatar="user"):
             user_input_placeholder = st.empty()
@@ -262,32 +287,7 @@ def main():
                         logging.error(f"Error processing sample question: {str(e)}")
                         st.error("An error occurred while processing your query. Please try again.")
 
-    with left_column:
-        st.markdown("""
-        NhanceBot is an AI-powered Data Insight tool designed to help you interact with your Snowflake data warehouse using natural language.
-
-        - **Ask in Plain English**: No need for complex query languages - just ask questions as you normally would.
-        - **Instant Answers**: Get the information you need in seconds, without waiting for the IT department.
-        - **User-Friendly for Everyone**: From executives to analysts, everyone can now access data insights easily.
-        - **Save Time and Resources**: Focus on making decisions, not on figuring out how to get the data.
-        - **NhanceBot Gets Smarter with Use**: The more you use NhanceBot, the better it understands your business needs.
-        
-        Let's explore your data together!
-        """)
-        
-        st.markdown('##### Sample Data Schema:')
-        data = {
-            'Table': ['CUSTOMERS', 'ORDERS', 'PRODUCTS', 'SALES'],
-            'Columns': [
-                'customer_id, name, email, segment',
-                'order_id, customer_id, order_date, total_amount',
-                'product_id, name, category, price',
-                'sale_id, product_id, quantity, revenue'
-            ]
-        }
-        df = pd.DataFrame(data)
-        
-        st.dataframe(df, height=500, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
