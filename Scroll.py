@@ -1,167 +1,12 @@
- import warnings
-warnings.filterwarnings('ignore')
-import pandas as pd
-import streamlit as st
-import os
-from datetime import datetime
-import hashlib
-import logging
-from sql_generator import SQLGenerator
-
-# Set up logging
-logging.basicConfig(filename='app.log', level=logging.INFO, 
-                    format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Set page config
-st.set_page_config(page_title="NeuroFlake", layout="wide", initial_sidebar_state="collapsed")
-
-# Constants
-CSV_FILE = 'user_interactions.csv'
-MAX_RETRIES = 3
-
-# Initialize SQL Generator
-@st.cache_resource
-def get_sql_generator():
-    return SQLGenerator()
-
-sql_generator = get_sql_generator()
-
-# Initialize CSV file
-def init_csv():
-    if not os.path.exists(CSV_FILE):
-        df = pd.DataFrame(columns=['timestamp', 'question', 'sql_query', 'upvote', 'downvote', 'session_id'])
-        df.to_csv(CSV_FILE, index=False)
-
-# Load CSV file
-@st.cache_data
-def load_data():
-    for _ in range(MAX_RETRIES):
-        try:
-            data = pd.read_csv(CSV_FILE)
-            return data
-        except pd.errors.EmptyDataError:
-            logging.warning(f"CSV file {CSV_FILE} is empty. Initializing with header.")
-            init_csv()
-        except Exception as e:
-            logging.error(f"Error loading CSV: {str(e)}")
-    return pd.DataFrame()  # Return empty DataFrame if all retries fail
-
-# Append data to CSV
-def append_to_csv(new_data):
-    for _ in range(MAX_RETRIES):
-        try:
-            with open(CSV_FILE, 'a', newline='') as f:
-                new_data.to_csv(f, header=f.tell()==0, index=False)
-            return True
-        except Exception as e:
-            logging.error(f"Error appending to CSV: {str(e)}")
-    return False
-
-# Generate a session ID
-def generate_session_id():
-    return hashlib.md5(str(datetime.now()).encode()).hexdigest()
-
-# Initialize app
-def init_app():
-    init_csv()
-    if 'chat' not in st.session_state:
-        st.session_state['chat'] = {
-            "user_input": None,
-            "bot_response_1": None,
-            "bot_response_2": None,
-        }
-    if 'session_id' not in st.session_state:
-        st.session_state['session_id'] = generate_session_id()
-    if 'last_question' not in st.session_state:
-        st.session_state['last_question'] = None
-    if 'chat_history' not in st.session_state:
-        st.session_state['chat_history'] = []
-
-# Generate SQL
-def generate_sql(question):
-    try:
-        return sql_generator.generate_sql(question)
-    except Exception as e:
-        logging.error(f"Error generating SQL: {str(e)}")
-        raise
-
-# Mock function for Snowflake query execution
-def execute_query(sql):
-    # This is a mock function. Replace with actual Snowflake query execution.
-    mock_data = {
-        'Column1': [1, 2, 3, 4, 5],
-        'Column2': ['A', 'B', 'C', 'D', 'E'],
-        'Column3': [10.1, 20.2, 30.3, 40.4, 50.5]
-    }
-    # Simulating a Snowflake cursor result
-    class MockCursor:
-        def fetch_pandas_all(self):
-            return pd.DataFrame(mock_data)
-    return MockCursor()
-
-# Handle user interaction
-def handle_interaction(question, sql_query):
-    new_data = pd.DataFrame({
-        'timestamp': [datetime.now()],
-        'question': [question.strip().replace('\n', ' ')],
-        'sql_query': [sql_query.strip().replace('\n', ' ')],
-        'upvote': [0],
-        'downvote': [0],
-        'session_id': [st.session_state['session_id']]
-    })
-    append_to_csv(new_data)
-    st.session_state['last_question'] = question.strip().replace('\n', ' ')
-
-# Update feedback
-def update_feedback(feedback_type, question):
-    for _ in range(MAX_RETRIES):
-        try:
-            data = pd.read_csv(CSV_FILE)
-            if not data.empty:
-                matching_rows = data[data['question'] == question]
-                if not matching_rows.empty:
-                    latest_index = matching_rows.index[-1]
-                    data.loc[latest_index, feedback_type] = 1
-                    data.to_csv(CSV_FILE, index=False)
-                    logging.info(f"Updated {feedback_type} for question: {question}")
-                    return True
-                else:
-                    logging.warning(f"No matching question found for feedback: {question}")
-            else:
-                logging.warning("CSV file is empty")
-            return False
-        except Exception as e:
-            logging.error(f"Error updating feedback: {str(e)}")
-    return False
-
-# Add to chat history
-def add_to_chat_history(question, sql_query, result_df):
-    st.session_state['chat_history'].append({
-        'question': question,
-        'sql_query': sql_query,
-        'result': result_df
-    })
-    auto_scroll_to_bottom()
-
-# Auto-scroll function
-def auto_scroll_to_bottom():
-    js = """
-    <script>
-        var rightContainer = document.querySelector('.right-container');
-        rightContainer.scrollTop = rightContainer.scrollHeight;
-    </script>
-    """
-    st.markdown(js, unsafe_allow_html=True)
-
-# Main app
 def main():
     init_app()
 
     st.markdown('## NeuroFlake: AI-Powered Data Insights for Snowflake')
 
+    # Add CSS for scrollable left container
     st.markdown("""
     <style>
-    .right-container {
+    .left-container {
         height: 600px;
         overflow-y: auto;
         padding: 10px;
@@ -173,6 +18,9 @@ def main():
     left_column, right_column = st.columns(2, gap="large")
 
     with left_column:
+        # Wrap left column content in a scrollable container
+        st.markdown('<div class="left-container">', unsafe_allow_html=True)
+        
         st.markdown("""
         NhanceBot is an AI-powered Data Insight tool designed to help you interact with your Snowflake data warehouse using natural language.
 
@@ -199,9 +47,10 @@ def main():
         
         st.dataframe(df, height=500, use_container_width=True)
 
-    with right_column:
-        st.markdown('<div class="right-container">', unsafe_allow_html=True)
+        # Close the scrollable container
+        st.markdown('</div>', unsafe_allow_html=True)
 
+    with right_column.container():
         # Display chat history
         for entry in st.session_state['chat_history']:
             with st.chat_message(name="user", avatar="user"):
@@ -286,8 +135,6 @@ def main():
                     except Exception as e:
                         logging.error(f"Error processing sample question: {str(e)}")
                         st.error("An error occurred while processing your query. Please try again.")
-
-        st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
