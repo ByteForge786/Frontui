@@ -13,7 +13,7 @@ logging.basicConfig(filename='app.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Set page config
-st.set_page_config(page_title="NeuroFlake", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="NhanceBot", page_icon="logo.png", layout="wide", initial_sidebar_state="collapsed")
 
 # Constants
 CSV_FILE = 'user_interactions.csv'
@@ -155,65 +155,63 @@ def add_to_chat_history(question, sql_query, result_df):
 # Main app
 def main():
     init_app()
-    c30, c32 = st.columns([0.2, 3])
 
-    with c30:
-        st.caption("")
-        st.image("logo.png", width=60)
-
-    with c32:
-        st.markdown("""
-        <h1 style='color: maroon;'>NhanceBot</h1>
-        """, unsafe_allow_html=True)
-
-    # Custom CSS for fixed header and footer
+    # Custom CSS
     st.markdown("""
-<style>
-.header {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 60px;
-    z-index: 1000;
-    background-color: white;
-    padding: 10px;
-    border-bottom: 1px solid #ddd;
-}
-.bot-title {
-    position: fixed;
-    top: 60px;
-    left: 0;
-    right: 0;
-    height: 40px;
-    z-index: 999;
-    background-color: white;
-    padding: 10px;
-    border-bottom: 1px solid #ddd;
-    color: maroon;
-}
-.footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 40px;
-    z-index: 1000;
-    background-color: white;
-    padding: 10px;
-    border-top: 1px solid #ddd;
-}
-.main-content {
-    margin-top: 120px;
-    margin-bottom: 50px;
-    padding: 20px;
-}
-.header img, .footer img {
-    max-width: 100%;
-    height: auto;
-}
-</style>
-""", unsafe_allow_html=True)
+    <style>
+        .main .block-container {
+            padding-top: 1rem;
+            padding-bottom: 0rem;
+            padding-left: 5rem;
+            padding-right: 5rem;
+        }
+        .stApp > header {
+            background-color: transparent;
+        }
+        .stApp {
+            margin-top: -80px;
+        }
+        .css-1544g2n {
+            padding-top: 0rem;
+        }
+        .css-18e3th9 {
+            padding-top: 0rem;
+            padding-bottom: 0rem;
+        }
+        .css-1d391kg {
+            padding-top: 1rem;
+        }
+        .logo-container {
+            margin-top: 1rem;
+        }
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            z-index: 999;
+            background-color: white;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            z-index: 999;
+            background-color: white;
+            padding: 10px;
+            border-top: 1px solid #ddd;
+        }
+        .content {
+            margin-top: 70px;
+            margin-bottom: 70px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
     # Header
     st.markdown(f"""
@@ -222,19 +220,52 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    # Bot Title
-    st.markdown("""
-    <div class="bot-title">
-        <h2 style="color: maroon;">NeuroFlake: AI-Powered Data Insights for Snowflake</h2>
-    </div>
-    """, unsafe_allow_html=True)
+    # Content
+    st.markdown('<div class="content">', unsafe_allow_html=True)
+
+    # Logo and Title
+    col1, col2 = st.columns([0.2, 3])
+    with col1:
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        st.image("logo.png", width=60)
+        st.markdown('</div>', unsafe_allow_html=True)
+    with col2:
+        st.markdown("<h1 style='color: maroon; margin-bottom: 0;'>NhanceBot</h1>", unsafe_allow_html=True)
 
     # Main content
-    st.markdown('<div class="main-content">', unsafe_allow_html=True)
+    st.markdown("""
+    NhanceBot is an AI-powered Data Insight tool designed to help you interact with 
+    your Snowflake data warehouse using natural language.
+    """)
 
     left_column, right_column = st.columns(2, gap="large")
 
-    with right_column.container():
+    with left_column:
+        st.markdown("""
+        - **Ask in Plain English**: No need for complex query languages - just ask questions as you normally would.
+        - **Instant Answers**: Get the information you need in seconds, without waiting for the IT department.
+        - **User-Friendly for Everyone**: From executives to analysts, everyone can now access data insights easily.
+        - **Save Time and Resources**: Focus on making decisions, not on figuring out how to get the data.
+        - **NhanceBot Gets Smarter with Use**: The more you use NhanceBot, the better it understands your business needs.
+        
+        Let's explore your data together!
+        """)
+        
+        st.markdown('##### Sample Data Schema:')
+        data = {
+            'Table': ['CUSTOMERS', 'ORDERS', 'PRODUCTS', 'SALES'],
+            'Columns': [
+                'customer_id, name, email, segment',
+                'order_id, customer_id, order_date, total_amount',
+                'product_id, name, category, price',
+                'sale_id, product_id, quantity, revenue'
+            ]
+        }
+        df = pd.DataFrame(data)
+        
+        st.dataframe(df, height=500, use_container_width=True)
+
+    with right_column:
         # Display chat history
         for entry in st.session_state['chat_history']:
             with st.chat_message(name="user", avatar="user"):
@@ -317,33 +348,6 @@ def main():
                     except Exception as e:
                         logging.error(f"Error processing sample question: {str(e)}")
                         st.error("An error occurred while processing your query. Please try again.")
-
-    with left_column:
-        st.markdown("""
-        NhanceBot is an AI-powered Data Insight tool designed to help you interact with your Snowflake data warehouse using natural language.
-
-        - **Ask in Plain English**: No need for complex query languages - just ask questions as you normally would.
-        - **Instant Answers**: Get the information you need in seconds, without waiting for the IT department.
-        - **User-Friendly for Everyone**: From executives to analysts, everyone can now access data insights easily.
-        - **Save Time and Resources**: Focus on making decisions, not on figuring out how to get the data.
-        - **NhanceBot Gets Smarter with Use**: The more you use NhanceBot, the better it understands your business needs.
-        
-        Let's explore your data together!
-        """)
-        
-        st.markdown('##### Sample Data Schema:')
-        data = {
-            'Table': ['CUSTOMERS', 'ORDERS', 'PRODUCTS', 'SALES'],
-            'Columns': [
-                'customer_id, name, email, segment',
-                'order_id, customer_id, order_date, total_amount',
-                'product_id, name, category, price',
-                'sale_id, product_id, quantity, revenue'
-            ]
-        }
-        df = pd.DataFrame(data)
-        
-        st.dataframe(df, height=500, use_container_width=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
