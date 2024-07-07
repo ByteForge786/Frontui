@@ -155,6 +155,16 @@ def add_to_chat_history(question, sql_query, result_df):
 # Main app
 def main():
     init_app()
+    c30, c32 = st.columns([0.2, 3])
+
+    with c30:
+        st.caption("")
+        st.image("logo.png", width=60)
+
+    with c32:
+        st.markdown("""
+        <h1 style='color: maroon;'>NhanceBot</h1>
+        """, unsafe_allow_html=True)
 
     # Custom CSS for fixed header and footer
     st.markdown("""
