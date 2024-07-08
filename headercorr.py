@@ -156,8 +156,6 @@ from datetime import datetime
 import hashlib
 import logging
 import base64
-import xml.etree.ElementTree as ET
-import re
 
 # Set up logging
 logging.basicConfig(filename='app.log', level=logging.INFO, 
@@ -170,50 +168,14 @@ st.set_page_config(page_title="NhanceBot", page_icon="logo.png", layout="wide", 
 CSV_FILE = 'user_interactions.csv'
 MAX_RETRIES = 3
 
-def get_svg_content_and_background(file_path):
+def get_svg_content(file_path):
     with open(file_path, "r") as file:
         content = file.read()
-    
-    # Parse the SVG
-    root = ET.fromstring(content)
-    
-    # Try to find a rectangle element that might be the background
-    background_rect = root.find(".//rect")
-    
-    if background_rect is not None:
-        # Extract fill color or gradient
-        fill = background_rect.get('fill')
-        if fill and fill.startswith('url(#'):
-            # It's a gradient or pattern
-            gradient_id = fill[5:-1]  # Remove 'url(#' and ')'
-            gradient_element = root.find(f".//*[@id='{gradient_id}']")
-            if gradient_element is not None:
-                background_svg = ET.tostring(gradient_element).decode()
-        else:
-            # It's a solid color
-            background_svg = f'<rect width="100%" height="100%" fill="{fill}"/>'
-    else:
-        # If no rectangle found, use the first child of the SVG as background
-        background_svg = ET.tostring(root[0]).decode()
-    
-    # Create a new SVG with the original content centered and background extended
-    new_svg = f"""
-    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="60">
-        <defs>
-            {background_svg}
-        </defs>
-        <rect width="100%" height="100%" fill="url(#background)"/>
-        <g transform="translate(50%, 30) scale(1)">
-            {content}
-        </g>
-    </svg>
-    """
-    
-    return base64.b64encode(new_svg.encode("utf-8")).decode("utf-8")
+    return base64.b64encode(content.encode("utf-8")).decode("utf-8")
 
 # Load SVG files
-header_svg = get_svg_content_and_background("header.svg")
-footer_svg = get_svg_content_and_background("footer.svg")
+header_svg = get_svg_content("header.svg")
+footer_svg = get_svg_content("footer.svg")
 
 # [Rest of your existing code for SQLGenerator, init_csv, load_data, etc.]
 
@@ -260,16 +222,13 @@ def main():
         }
         .header {
             top: 0;
-            border-bottom: 1px solid #ddd;
         }
         .footer {
             bottom: 0;
-            border-top: 1px solid #ddd;
         }
-        .header img, .footer img {
+        .header svg, .footer svg {
             width: 100%;
-            height: 100%;
-            object-fit: cover;
+            height: 60px;
         }
         .content {
             margin-top: 70px;
@@ -281,7 +240,11 @@ def main():
     # Header
     st.markdown(f"""
     <div class="header">
-        <img src="data:image/svg+xml;base64,{header_svg}" alt="Header SVG">
+        <svg viewBox="0 0 1200 60" preserveAspectRatio="none">
+            <svg x="0" y="0" width="1200" height="60">
+                <image href="data:image/svg+xml;base64,{header_svg}" width="100%" height="60" preserveAspectRatio="xMidYMid slice"/>
+            </svg>
+        </svg>
     </div>
     """, unsafe_allow_html=True)
 
@@ -295,7 +258,11 @@ def main():
     # Footer
     st.markdown(f"""
     <div class="footer">
-        <img src="data:image/svg+xml;base64,{footer_svg}" alt="Footer SVG">
+        <svg viewBox="0 0 1200 60" preserveAspectRatio="none">
+            <svg x="0" y="0" width="1200" height="60">
+                <image href="data:image/svg+xml;base64,{footer_svg}" width="100%" height="60" preserveAspectRatio="xMidYMid slice"/>
+            </svg>
+        </svg>
     </div>
     """, unsafe_allow_html=True)
 
