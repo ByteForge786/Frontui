@@ -360,3 +360,62 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+# In the Custom CSS section, update the header and footer styles:
+
+st.markdown("""
+<style>
+    /* ... other styles ... */
+    
+    .header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        z-index: 999;
+        background-color: white;
+        padding: 0;
+        border-bottom: 1px solid #ddd;
+    }
+    .header img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        z-index: 999;
+        background-color: white;
+        padding: 0;
+        border-top: 1px solid #ddd;
+    }
+    .footer img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    /* ... other styles ... */
+</style>
+""", unsafe_allow_html=True)
+# Update the header HTML
+st.markdown(f"""
+<div class="header">
+    <img src="data:image/svg+xml;base64,{header_svg}" alt="Header SVG">
+</div>
+""", unsafe_allow_html=True)
+
+# Update the footer HTML
+st.markdown(f"""
+<div class="footer">
+    <img src="data:image/svg+xml;base64,{footer_svg}" alt="Footer SVG">
+</div>
+""", unsafe_allow_html=True)
