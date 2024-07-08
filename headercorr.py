@@ -147,6 +147,38 @@ if __name__ == "__main__":
 
 333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
 
+
+import xml.etree.ElementTree as ET
+
+def get_svg_content(file_path, square_size=48):
+    tree = ET.parse(file_path)
+    root = tree.getroot()
+    
+    # Get original dimensions
+    width = int(root.attrib['width'])
+    height = int(root.attrib['height'])
+    
+    # Calculate the starting x-coordinate for the square
+    start_x = width - square_size
+    
+    # Create a new SVG with the extracted square
+    new_svg = ET.Element('svg', {
+        'width': str(square_size),
+        'height': str(square_size),
+        'viewBox': f"{start_x} 0 {square_size} {square_size}"
+    })
+    
+    # Copy all elements from the original SVG
+    for child in root:
+        new_svg.append(child)
+    
+    # Convert to string and encode
+    svg_str = ET.tostring(new_svg, encoding='unicode')
+    return base64.b64encode(svg_str.encode("utf-8")).decode("utf-8")
+
+header_svg = get_svg_content("header.svg")
+footer_svg = get_svg_content("footer.svg")
+
 def main():
     init_app()
 
@@ -172,11 +204,11 @@ def main():
             bottom: 0;
             border-top: 1px solid #ddd;
         }
-        .header img, .footer img {
+        .header-bg, .footer-bg {
             width: 100%;
             height: 100%;
-            object-fit: cover;
-            object-position: center;
+            background-repeat: repeat-x;
+            background-size: auto 100%;
         }
         /* ... other styles ... */
     </style>
@@ -185,7 +217,7 @@ def main():
     # Header
     st.markdown(f"""
     <div class="header">
-        <img src="data:image/svg+xml;base64,{header_svg}" alt="Header SVG">
+        <div class="header-bg" style="background-image: url(data:image/svg+xml;base64,{header_svg});"></div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -199,31 +231,8 @@ def main():
     # Footer
     st.markdown(f"""
     <div class="footer">
-        <img src="data:image/svg+xml;base64,{footer_svg}" alt="Footer SVG">
+        <div class="footer-bg" style="background-image: url(data:image/svg+xml;base64,{footer_svg});"></div>
     </div>
-    """, unsafe_allow_html=True)
-
-    # JavaScript for adjusting SVG
-    st.markdown("""
-    <script>
-        function adjustSVG(img) {
-            var svg = img.contentDocument.querySelector('svg');
-            if (svg) {
-                var bbox = svg.getBBox();
-                var viewBox = [bbox.x, bbox.y, bbox.width, bbox.height].join(' ');
-                svg.setAttribute('viewBox', viewBox);
-                svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-            }
-        }
-
-        window.addEventListener('load', function() {
-            var headerImg = document.querySelector('.header img');
-            var footerImg = document.querySelector('.footer img');
-            
-            if (headerImg) headerImg.addEventListener('load', function() { adjustSVG(this); });
-            if (footerImg) footerImg.addEventListener('load', function() { adjustSVG(this); });
-        });
-    </script>
     """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
