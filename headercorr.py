@@ -147,123 +147,83 @@ if __name__ == "__main__":
 
 333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
 
-import warnings
-warnings.filterwarnings('ignore')
-import pandas as pd
-import streamlit as st
-import os
-from datetime import datetime
-import hashlib
-import logging
-import base64
-
-# Set up logging
-logging.basicConfig(filename='app.log', level=logging.INFO, 
-                    format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Set page config
-st.set_page_config(page_title="NhanceBot", page_icon="logo.png", layout="wide", initial_sidebar_state="collapsed")
-
-# Constants
-CSV_FILE = 'user_interactions.csv'
-MAX_RETRIES = 3
-
-def get_svg_content(file_path):
-    with open(file_path, "r") as file:
-        content = file.read()
-    return base64.b64encode(content.encode("utf-8")).decode("utf-8")
-
-# Load SVG files
-header_svg = get_svg_content("header.svg")
-footer_svg = get_svg_content("footer.svg")
-
-# [Rest of your existing code for SQLGenerator, init_csv, load_data, etc.]
-
-# Main app
 def main():
     init_app()
 
     # Custom CSS
     st.markdown("""
     <style>
-        .main .block-container {
-            padding-top: 1rem;
-            padding-bottom: 0rem;
-            padding-left: 5rem;
-            padding-right: 5rem;
-        }
-        .stApp > header {
-            background-color: transparent;
-        }
-        .stApp {
-            margin-top: -80px;
-        }
-        .css-1544g2n {
-            padding-top: 0rem;
-        }
-        .css-18e3th9 {
-            padding-top: 0rem;
-            padding-bottom: 0rem;
-        }
-        .css-1d391kg {
-            padding-top: 1rem;
-        }
-        .logo-container {
-            margin-top: 1rem;
-        }
+        /* ... other styles ... */
         .header, .footer {
             position: fixed;
             left: 0;
             right: 0;
             height: 60px;
             z-index: 999;
+            background-color: white;
             padding: 0;
             overflow: hidden;
         }
         .header {
             top: 0;
+            border-bottom: 1px solid #ddd;
         }
         .footer {
             bottom: 0;
+            border-top: 1px solid #ddd;
         }
-        .header svg, .footer svg {
+        .header img, .footer img {
             width: 100%;
-            height: 60px;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
         }
-        .content {
-            margin-top: 70px;
-            margin-bottom: 70px;
-        }
+        /* ... other styles ... */
     </style>
     """, unsafe_allow_html=True)
 
     # Header
     st.markdown(f"""
     <div class="header">
-        <svg viewBox="0 0 1200 60" preserveAspectRatio="none">
-            <svg x="0" y="0" width="1200" height="60">
-                <image href="data:image/svg+xml;base64,{header_svg}" width="100%" height="60" preserveAspectRatio="xMidYMid slice"/>
-            </svg>
-        </svg>
+        <img src="data:image/svg+xml;base64,{header_svg}" alt="Header SVG">
     </div>
     """, unsafe_allow_html=True)
 
     # Content
     st.markdown('<div class="content">', unsafe_allow_html=True)
 
-    # [Your existing main content code]
+    # ... Your existing content code ...
 
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Footer
     st.markdown(f"""
     <div class="footer">
-        <svg viewBox="0 0 1200 60" preserveAspectRatio="none">
-            <svg x="0" y="0" width="1200" height="60">
-                <image href="data:image/svg+xml;base64,{footer_svg}" width="100%" height="60" preserveAspectRatio="xMidYMid slice"/>
-            </svg>
-        </svg>
+        <img src="data:image/svg+xml;base64,{footer_svg}" alt="Footer SVG">
     </div>
+    """, unsafe_allow_html=True)
+
+    # JavaScript for adjusting SVG
+    st.markdown("""
+    <script>
+        function adjustSVG(img) {
+            var svg = img.contentDocument.querySelector('svg');
+            if (svg) {
+                var bbox = svg.getBBox();
+                var viewBox = [bbox.x, bbox.y, bbox.width, bbox.height].join(' ');
+                svg.setAttribute('viewBox', viewBox);
+                svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+            }
+        }
+
+        window.addEventListener('load', function() {
+            var headerImg = document.querySelector('.header img');
+            var footerImg = document.querySelector('.footer img');
+            
+            if (headerImg) headerImg.addEventListener('load', function() { adjustSVG(this); });
+            if (footerImg) footerImg.addEventListener('load', function() { adjustSVG(this); });
+        });
+    </script>
     """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
