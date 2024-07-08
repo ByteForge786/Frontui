@@ -270,6 +270,95 @@ def main():
                     logging.error(f"Error processing sample question: {str(e)}")
                     st.error("An error occurred while processing your query. Please try again.")
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+=================================================================================
+
+# Load SVG files
+header_svg = get_svg_content("header.svg")
+footer_svg = get_svg_content("footer.svg")
+
+# In the main() function, replace the header and footer display code with:
+
+# Header
+st.markdown(
+    f"""
+    <style>
+    .header-container {{
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        background-color: white;
+        overflow: hidden;
+        height: 60px;
+    }}
+    .header-content {{
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: left center;
+    }}
+    </style>
+    <div class="header-container">
+        <img src="data:image/svg+xml;base64,{header_svg}" class="header-content">
+    </div>
+    <div style="margin-top: 70px;"></div>
+    """,
+    unsafe_allow_html=True
+)
+
+# (Keep the main content of your app here)
+
+# Footer
+st.markdown(
+    f"""
+    <style>
+    .footer-container {{
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        background-color: white;
+        overflow: hidden;
+        height: 60px;
+    }}
+    .footer-content {{
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: left center;
+    }}
+    </style>
+    <div class="footer-container">
+        <img src="data:image/svg+xml;base64,{footer_svg}" class="footer-content">
+    </div>
+    <div style="margin-bottom: 70px;"></div>
+    """,
+    unsafe_allow_html=True
+)
+
     # Footer
     st.image(f"data:image/svg+xml;base64,{footer_svg}", use_column_width=True)
 
