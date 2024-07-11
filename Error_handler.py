@@ -59,3 +59,79 @@ def get_error_tips(error_message):
             return "\n".join(tips + general_tips)
 
     return "\n".join(general_tips)
+
+
+
+
+
+
+
+
+
+
+
+
+# main.py
+
+import streamlit as st
+import logging
+from datetime import datetime
+import hashlib
+from snowflake.connector.errors import ProgrammingError
+from error_handler import parse_snowflake_error, get_error_tips
+
+# Set up logging
+logging.basicConfig(filename='app.log', level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Custom exception for Snowflake query errors
+class SnowflakeQueryError(Exception):
+    pass
+
+def generate_sql(question):
+    # This is a placeholder. Replace with your actual SQL generation logic
+    return f"SELECT * FROM sample_table WHERE condition = '{question}';"
+
+def execute_query(sql):
+    # This is a placeholder. Replace with your actual Snowflake query execution logic
+    # For demonstration, we'll raise an error
+    raise ProgrammingError("Object 'SAMPLE_TABLE' does not exist or not authorized.")
+
+def handle_interaction(question, result):
+    # This is a placeholder. Replace with your actual interaction handling logic
+    pass
+
+def generate_session_id():
+    return hashlib.md5(str(datetime.now()).encode()).hexdigest()
+
+def main():
+    st.set_page_config(page_title="NeuroFlake", layout="wide", initial_sidebar_state="collapsed")
+
+    if 'session_id' not in st.session_state:
+        st.session_state['session_id'] = generate_session_id()
+
+    st.markdown('## NeuroFlake: AI-Powered Text-to-SQL for Snowflake')
+
+    user_input = st.text_area("What would you like to know about your data?")
+
+    if st.button("🚀 Get Answer", key="generate_answer", use_container_width=True):
+        if user_input:
+            try:
+                sql_response = generate_sql(user_input)
+                result_response = execute_query(sql_response)
+                st.success(result_response)
+                handle_interaction(user_input, result_response)
+            except ProgrammingError as e:
+                error_message = parse_snowflake_error(str(e), sql_response)
+                st.error(f"I'm sorry, I ran into a problem: {error_message}")
+                st.info("Let me know if any of these help:")
+                st.markdown(get_error_tips(error_message))
+                st.markdown("If none of these help, feel free to ask your question in a different way!")
+            except Exception as e:
+                logging.error(f"Error processing query: {str(e)}")
+                st.error("I'm having trouble understanding that. Could you try asking in a different way?")
+
+if __name__ == "__main__":
+    main()
+
+
