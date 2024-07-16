@@ -3,48 +3,25 @@ warnings.filterwarnings('ignore')
 import pandas as pd
 import streamlit as st
 import os
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import hashlib
 import logging
-import base64
 
 # Set up logging
 logging.basicConfig(filename='app.log', level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Set page config
-st.set_page_config(page_title="NhanceBot", page_icon="logo.png", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="NhanceBot", layout="wide", initial_sidebar_state="collapsed")
 
 # Constants
 CSV_FILE = 'user_interactions.csv'
 MAX_RETRIES = 3
 
-# Function to read and encode SVG files
-def get_svg_content(file_path):
-    with open(file_path, "r") as file:
-        content = file.read()
-    return base64.b64encode(content.encode("utf-8")).decode("utf-8")
-
-# Load SVG files
-header_svg = get_svg_content("header.svg")
-footer_svg = get_svg_content("header.svg")
-
-# Mock SQL Generator
-class SQLGenerator:
-    def generate_sql(self, question):
-        return f"SELECT * FROM table WHERE condition = '{question}'"
-
-# Initialize SQL Generator
-@st.cache_resource
-def get_sql_generator():
-    return SQLGenerator()
-
-sql_generator = get_sql_generator()
-
 # Initialize CSV file
 def init_csv():
     if not os.path.exists(CSV_FILE):
-        df = pd.DataFrame(columns=['timestamp', 'question', 'sql_query', 'upvote', 'downvote', 'session_id'])
+        df = pd.DataFrame(columns=['timestamp', 'question', 'result', 'upvote', 'downvote', 'session_id'])
         df.to_csv(CSV_FILE, index=False)
 
 # Load CSV file
@@ -79,42 +56,28 @@ def generate_session_id():
 # Initialize app
 def init_app():
     init_csv()
-    if 'chat' not in st.session_state:
-        st.session_state['chat'] = {
-            "user_input": None,
-            "bot_response_1": None,
-            "bot_response_2": None,
-        }
+    if 'chat_history' not in st.session_state:
+        st.session_state['chat_history'] = []
     if 'session_id' not in st.session_state:
         st.session_state['session_id'] = generate_session_id()
     if 'last_question' not in st.session_state:
         st.session_state['last_question'] = None
-    if 'chat_history' not in st.session_state:
-        st.session_state['chat_history'] = []
 
-# Generate SQL
+# Mock function for SQL generation (replace with actual implementation)
 def generate_sql(question):
-    try:
-        return sql_generator.generate_sql(question)
-    except Exception as e:
-        logging.error(f"Error generating SQL: {str(e)}")
-        raise
+    return f"SELECT * FROM sample_table WHERE condition = '{question}';"
 
-# Mock function for Snowflake query execution
+# Mock function for query execution (replace with actual implementation)
 def execute_query(sql):
-    mock_data = {
-        'Column1': [1, 2, 3, 4, 5],
-        'Column2': ['A', 'B', 'C', 'D', 'E'],
-        'Column3': [10.1, 20.2, 30.3, 40.4, 50.5]
-    }
-    return pd.DataFrame(mock_data)
+    # This is a mock implementation. Replace with actual query execution.
+    return pd.DataFrame({'Column1': ['Data1', 'Data2'], 'Column2': [1, 2]})
 
 # Handle user interaction
-def handle_interaction(question, sql_query):
+def handle_interaction(question, result):
     new_data = pd.DataFrame({
         'timestamp': [datetime.now()],
         'question': [question.strip().replace('\n', ' ')],
-        'sql_query': [sql_query.strip().replace('\n', ' ')],
+        'result': [result.strip().replace('\n', ' ')],
         'upvote': [0],
         'downvote': [0],
         'session_id': [st.session_state['session_id']]
@@ -145,48 +108,74 @@ def update_feedback(feedback_type, question):
     return False
 
 # Add to chat history
-def add_to_chat_history(question, sql_query, result_df):
+def add_to_chat_history(question, sql_query, result):
     st.session_state['chat_history'].append({
         'question': question,
         'sql_query': sql_query,
-        'result': result_df
+        'result': result
     })
 
 # Main app
 def main():
     init_app()
 
-    # Header
-    st.image(f"data:image/svg+xml;base64,{header_svg}", use_column_width=True)
+    # Date selection
+    today = date.today()
+    default_start = today - timedelta(days=7)
+    min_start_date = today - timedelta(days=60)
 
-    # Sidebar
-    with st.sidebar:
-        col1, col2 = st.columns([0.2, 1.5])
-        with col1:
-            st.image("logo.png", width=60)
-        with col2:
-            st.markdown("<h1 style='color: maroon; margin-bottom: 0;'>NhanceBot</h1>", unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("Start Date", 
+                                   value=default_start,
+                                   min_value=min_start_date,
+                                   max_value=today,
+                                   format="DD/MM/YYYY")
 
-        st.markdown("""
-        NhanceBot is an AI-powered Data Insight tool designed to help you 
-        interact with your Snowflake data warehouse using natural language.
-        """)
+    with col2:
+        max_end_date = min(start_date + timedelta(days=60), today)
+        end_date = st.date_input("End Date", 
+                                 value=today,
+                                 min_value=start_date,
+                                 max_value=max_end_date,
+                                 format="DD/MM/YYYY")
 
-        st.markdown('##### Sample Data Schema:')
-        data = {
-            'Table': ['CUSTOMERS', 'ORDERS', 'PRODUCTS', 'SALES'],
-            'Columns': [
-                'customer_id, name, email, segment',
-                'order_id, customer_id, order_date, total_amount',
-                'product_id, name, category, price',
-                'sale_id, product_id, quantity, revenue'
-            ]
-        }
-        df = pd.DataFrame(data)
-        
-        st.dataframe(df, height=500, use_container_width=True)
+    if (end_date - start_date).days > 60:
+        st.error("The difference between start and end date cannot exceed 2 months.")
+        return
 
-    # Main content
+    if not start_date or not end_date:
+        st.warning("Please select both start and end dates to begin.")
+        return
+
+    # Logo and title
+    col1, col2 = st.columns([0.2, 1.5])
+    with col1:
+        st.image("logo.png", width=60)
+    with col2:
+        st.markdown("<h1 style='color: maroon; margin-bottom: 0;'>NhanceBot</h1>", unsafe_allow_html=True)
+
+    st.markdown(f"""
+    NhanceBot is an AI-powered Data Insight tool designed to help you 
+    interact with your Snowflake data warehouse using natural language.
+    
+    Selected date range: {start_date.strftime('%d/%m/%Y')} to {end_date.strftime('%d/%m/%Y')}
+    """)
+
+    st.markdown('##### Sample Data Schema:')
+    data = {
+        'Table': ['CUSTOMERS', 'ORDERS', 'PRODUCTS', 'SALES'],
+        'Columns': [
+            'customer_id, name, email, segment',
+            'order_id, customer_id, order_date, total_amount',
+            'product_id, name, category, price',
+            'sale_id, product_id, quantity, revenue'
+        ]
+    }
+    df = pd.DataFrame(data)
+    
+    st.dataframe(df, height=500, use_container_width=True)
+
     # Display chat history
     for entry in st.session_state['chat_history']:
         with st.chat_message(name="user", avatar="user"):
@@ -226,7 +215,7 @@ def main():
         if st.button("👍 Upvote", key="upvote", use_container_width=True):
             if st.session_state.get('last_question'):
                 if update_feedback('upvote', st.session_state['last_question']):
-                    button_info.success("Thanks for your feedback! NeuroFlake Memory updated")
+                    button_info.success("Thanks for your feedback! NhanceBot Memory updated")
                 else:
                     button_info.error("Failed to update feedback. Please try again.")
             else:
@@ -269,98 +258,6 @@ def main():
                 except Exception as e:
                     logging.error(f"Error processing sample question: {str(e)}")
                     st.error("An error occurred while processing your query. Please try again.")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-=================================================================================
-
-# Load SVG files
-header_svg = get_svg_content("header.svg")
-footer_svg = get_svg_content("footer.svg")
-
-# In the main() function, replace the header and footer display code with:
-
-# Header
-st.markdown(
-    f"""
-    <style>
-    .header-container {{
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 1000;
-        background-color: white;
-        overflow: hidden;
-        height: 60px;
-    }}
-    .header-content {{
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: left center;
-    }}
-    </style>
-    <div class="header-container">
-        <img src="data:image/svg+xml;base64,{header_svg}" class="header-content">
-    </div>
-    <div style="margin-top: 70px;"></div>
-    """,
-    unsafe_allow_html=True
-)
-
-# (Keep the main content of your app here)
-
-# Footer
-st.markdown(
-    f"""
-    <style>
-    .footer-container {{
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        z-index: 1000;
-        background-color: white;
-        overflow: hidden;
-        height: 60px;
-    }}
-    .footer-content {{
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: left center;
-    }}
-    </style>
-    <div class="footer-container">
-        <img src="data:image/svg+xml;base64,{footer_svg}" class="footer-content">
-    </div>
-    <div style="margin-bottom: 70px;"></div>
-    """,
-    unsafe_allow_html=True
-)
-
-    # Footer
-    st.image(f"data:image/svg+xml;base64,{footer_svg}", use_column_width=True)
 
 if __name__ == "__main__":
     main()
