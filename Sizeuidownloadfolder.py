@@ -10,7 +10,6 @@ import logging
 import tempfile
 import io
 import uuid
-import base64
 
 # Set up logging
 logging.basicConfig(filename='app.log', level=logging.INFO, 
@@ -71,8 +70,8 @@ def init_app():
         st.session_state['session_id'] = generate_session_id()
     if 'last_question' not in st.session_state:
         st.session_state['last_question'] = None
-    if 'download_id' not in st.session_state:
-        st.session_state['download_id'] = None
+    if 'last_sql' not in st.session_state:
+        st.session_state['last_sql'] = None
 
 # Mock function for SQL generation (replace with actual implementation)
 def generate_sql(question):
@@ -122,20 +121,13 @@ def update_feedback(feedback_type, question):
             logging.error(f"Error updating feedback: {str(e)}")
     return False
 
-# Function to save dataframe to file for download
-def save_dataframe_for_download(df):
-    download_id = str(uuid.uuid4())
-    file_path = os.path.join(DOWNLOAD_FOLDER, f"{download_id}.csv")
-    df.to_csv(file_path, index=False)
-    return download_id, file_path
-
-# Function to get download link
-def get_download_link(file_path):
-    with open(file_path, "rb") as f:
-        bytes = f.read()
-        b64 = base64.b64encode(bytes).decode()
-        href = f'<a href="data:file/csv;base64,{b64}" download="results.csv">Download full CSV</a>'
-        return href
+# Function to generate CSV on-demand
+def generate_csv():
+    if st.session_state['last_sql']:
+        result_df = execute_query(st.session_state['last_sql'])
+        csv = result_df.to_csv(index=False)
+        return csv
+    return None
 
 # Main app
 def main():
@@ -165,26 +157,23 @@ def main():
                     user_input_placeholder.markdown(user_input)
                     try:
                         sql_response = generate_sql(user_input)
+                        st.session_state['last_sql'] = sql_response
                         bot_response_1_placeholder.code(sql_response, language="sql")
                         
                         result_df = execute_query(sql_response)
                         
                         df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)  # Size in MB
                         
-                        if df_size > SIZE_LIMIT_MB:
-                            limited_result = result_df.head(MAX_ROWS_DISPLAY)
-                            bot_response_2_placeholder.dataframe(limited_result)
-                            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
-                            
-                            # Save full result and get download ID and file path
-                            download_id, file_path = save_dataframe_for_download(result_df)
-                            st.session_state['download_id'] = download_id
-                            
-                            # Create download link
-                            download_link = get_download_link(file_path)
-                            download_placeholder.markdown(download_link, unsafe_allow_html=True)
-                        else:
-                            bot_response_2_placeholder.dataframe(result_df)
+                        limited_result = result_df.head(MAX_ROWS_DISPLAY)
+                        bot_response_2_placeholder.dataframe(limited_result)
+                        info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
+                        
+                        download_placeholder.download_button(
+                            label="Download full CSV",
+                            data=generate_csv,
+                            file_name="full_result.csv",
+                            mime="text/csv",
+                        )
                         
                         result_response = f"Query executed successfully. {len(result_df)} rows returned."
                         handle_interaction(user_input, result_response)
@@ -230,25 +219,22 @@ def main():
                     user_input_placeholder.markdown(question)
                     try:
                         sql_response = generate_sql(question)
+                        st.session_state['last_sql'] = sql_response
                         bot_response_1_placeholder.code(sql_response, language="sql")
                         result_df = execute_query(sql_response)
                         
                         df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)  # Size in MB
                         
-                        if df_size > SIZE_LIMIT_MB:
-                            limited_result = result_df.head(MAX_ROWS_DISPLAY)
-                            bot_response_2_placeholder.dataframe(limited_result)
-                            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
-                            
-                            # Save full result and get download ID and file path
-                            download_id, file_path = save_dataframe_for_download(result_df)
-                            st.session_state['download_id'] = download_id
-                            
-                            # Create download link
-                            download_link = get_download_link(file_path)
-                            download_placeholder.markdown(download_link, unsafe_allow_html=True)
-                        else:
-                            bot_response_2_placeholder.dataframe(result_df)
+                        limited_result = result_df.head(MAX_ROWS_DISPLAY)
+                        bot_response_2_placeholder.dataframe(limited_result)
+                        info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
+                        
+                        download_placeholder.download_button(
+                            label="Download full CSV",
+                            data=generate_csv,
+                            file_name="full_result.csv",
+                            mime="text/csv",
+                        )
                         
                         result_response = f"Query executed successfully. {len(result_df)} rows returned."
                         handle_interaction(question, result_response)
