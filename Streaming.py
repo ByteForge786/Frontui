@@ -1,4 +1,4 @@
-import warnings
+ import warnings
 warnings.filterwarnings('ignore')
 import pandas as pd
 import numpy as np
@@ -8,6 +8,7 @@ from datetime import datetime
 import hashlib
 import logging
 import uuid
+import zipfile
 
 # Set up logging
 logging.basicConfig(filename='app.log', level=logging.INFO, 
@@ -20,7 +21,7 @@ st.set_page_config(page_title="NeuroFlake", layout="wide", initial_sidebar_state
 CSV_FILE = 'user_interactions.csv'
 MAX_RETRIES = 3
 MAX_ROWS_DISPLAY = 1000
-CHUNK_SIZE = 10**6  # 1 MB chunks for streaming
+ZIP_FOLDER = "zip_downloads"
 
 # Initialize CSV file
 def init_csv():
@@ -92,31 +93,38 @@ def handle_interaction(question, result):
     append_to_csv(new_data)
     st.session_state['last_question'] = question.strip().replace('\n', ' ')
 
-# Stream CSV file in chunks
-def stream_csv_file():
+# Generate a zip file containing the CSV file
+def generate_zip_file():
     if st.session_state['last_sql']:
         result_df = execute_query(st.session_state['last_sql'])
         filename = f"result_{uuid.uuid4().hex}.csv"
-        temp_file_path = os.path.join("temp_files", filename)
-        os.makedirs("temp_files", exist_ok=True)
+        zip_filename = f"result_{uuid.uuid4().hex}.zip"
+        temp_file_path = os.path.join(ZIP_FOLDER, filename)
+        os.makedirs(ZIP_FOLDER, exist_ok=True)
 
-        with open(temp_file_path, 'w') as f:
-            # Stream the file in chunks
-            for chunk in pd.read_csv(temp_file_path, chunksize=CHUNK_SIZE):
-                chunk.to_csv(f, index=False, header=f.tell() == 0)
+        # Save CSV file to temp location
+        result_df.to_csv(temp_file_path, index=False)
 
-        return temp_file_path
+        # Create a zip file
+        zip_file_path = os.path.join(ZIP_FOLDER, zip_filename)
+        with zipfile.ZipFile(zip_file_path, 'w') as zipf:
+            zipf.write(temp_file_path, arcname=filename)
+
+        # Optionally remove the CSV file after zipping
+        os.remove(temp_file_path)
+
+        return zip_file_path
     return None
 
-# Create download button for streaming CSV
+# Create download button for zipped CSV
 def create_download_button(file_path):
     if file_path and os.path.exists(file_path):
         with open(file_path, "rb") as file:
             st.download_button(
-                label="Download full CSV",
+                label="Download full CSV as ZIP",
                 data=file,
                 file_name=os.path.basename(file_path),
-                mime="text/csv"
+                mime="application/zip"
             )
 
 # Main app function
@@ -158,10 +166,10 @@ def main():
                         bot_response_2_placeholder.dataframe(limited_result)
                         info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
                         
-                        # Generate CSV file and provide download button
-                        csv_file_path = stream_csv_file()
-                        if csv_file_path:
-                            create_download_button(csv_file_path)
+                        # Generate ZIP file and provide download button
+                        zip_file_path = generate_zip_file()
+                        if zip_file_path:
+                            create_download_button(zip_file_path)
                         
                         result_response = f"Query executed successfully. {len(result_df)} rows returned."
                         handle_interaction(user_input, result_response)
@@ -218,10 +226,10 @@ def main():
                         bot_response_2_placeholder.dataframe(limited_result)
                         info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
                         
-                        # Generate CSV file and provide download button
-                        csv_file_path = stream_csv_file()
-                        if csv_file_path:
-                            create_download_button(csv_file_path)
+                        # Generate ZIP file and provide download button
+                        zip_file_path = generate_zip_file()
+                        if zip_file_path:
+                            create_download_button(zip_file_path)
                         
                         result_response = f"Query executed successfully. {len(result_df)} rows returned."
                         handle_interaction(question, result_response)
@@ -235,4 +243,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-                       
