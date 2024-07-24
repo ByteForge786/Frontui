@@ -162,8 +162,8 @@ def main():
                         
                         if df_size > 190:  # If larger than 190MB
                             limited_result = result_df.head(1000)  # Show first 1000 rows
-                            bot_response_2_placeholder.warning("Limited data shown due to large result size")
                             bot_response_2_placeholder.dataframe(limited_result)
+                            st.info(f"Showing first 1000 rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
                             download_link = get_csv_download_link(result_df)
                             st.markdown(download_link, unsafe_allow_html=True)
                         else:
@@ -220,8 +220,8 @@ def main():
                         
                         if df_size > 190:  # If larger than 190MB
                             limited_result = result_df.head(1000)  # Show first 1000 rows
-                            bot_response_2_placeholder.warning("Limited data shown due to large result size")
                             bot_response_2_placeholder.dataframe(limited_result)
+                            st.info(f"Showing first 1000 rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
                             download_link = get_csv_download_link(result_df)
                             st.markdown(download_link, unsafe_allow_html=True)
                         else:
