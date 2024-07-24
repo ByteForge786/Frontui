@@ -7,9 +7,8 @@ import os
 from datetime import datetime
 import hashlib
 import logging
-import tempfile
-import io
 import uuid
+import zipfile
 
 # Set up logging
 logging.basicConfig(filename='app.log', level=logging.INFO, 
@@ -22,12 +21,8 @@ st.set_page_config(page_title="NeuroFlake", layout="wide", initial_sidebar_state
 CSV_FILE = 'user_interactions.csv'
 MAX_RETRIES = 3
 MAX_ROWS_DISPLAY = 1000
+ZIP_FOLDER = "zip_downloads"
 SIZE_LIMIT_MB = 190
-DOWNLOAD_FOLDER = "downloads"
-
-# Create download folder if it doesn't exist
-if not os.path.exists(DOWNLOAD_FOLDER):
-    os.makedirs(DOWNLOAD_FOLDER)
 
 # Initialize CSV file
 def init_csv():
@@ -73,11 +68,11 @@ def init_app():
     if 'last_sql' not in st.session_state:
         st.session_state['last_sql'] = None
 
-# Mock function for SQL generation (replace with actual implementation)
+# Mock function for SQL generation
 def generate_sql(question):
     return f"SELECT * FROM sample_table WHERE condition = '{question}';"
 
-# Mock function for query execution (replace with actual implementation)
+# Mock function for query execution
 def execute_query(sql):
     n_rows = 10000000  # Increased for testing large datasets
     return pd.DataFrame({
@@ -99,37 +94,41 @@ def handle_interaction(question, result):
     append_to_csv(new_data)
     st.session_state['last_question'] = question.strip().replace('\n', ' ')
 
-# Update feedback
-def update_feedback(feedback_type, question):
-    for _ in range(MAX_RETRIES):
-        try:
-            data = pd.read_csv(CSV_FILE)
-            if not data.empty:
-                matching_rows = data[data['question'] == question]
-                if not matching_rows.empty:
-                    latest_index = matching_rows.index[-1]
-                    data.loc[latest_index, feedback_type] = 1
-                    data.to_csv(CSV_FILE, index=False)
-                    logging.info(f"Updated {feedback_type} for question: {question}")
-                    return True
-                else:
-                    logging.warning(f"No matching question found for feedback: {question}")
-            else:
-                logging.warning("CSV file is empty")
-            return False
-        except Exception as e:
-            logging.error(f"Error updating feedback: {str(e)}")
-    return False
-
-# Function to generate CSV on-demand
-def generate_csv():
+# Generate a zip file containing the CSV file
+def generate_zip_file():
     if st.session_state['last_sql']:
         result_df = execute_query(st.session_state['last_sql'])
-        csv = result_df.to_csv(index=False)
-        return csv
+        filename = f"result_{uuid.uuid4().hex}.csv"
+        zip_filename = f"result_{uuid.uuid4().hex}.zip"
+        temp_file_path = os.path.join(ZIP_FOLDER, filename)
+        os.makedirs(ZIP_FOLDER, exist_ok=True)
+
+        # Save CSV file to temp location
+        result_df.to_csv(temp_file_path, index=False)
+
+        # Create a zip file
+        zip_file_path = os.path.join(ZIP_FOLDER, zip_filename)
+        with zipfile.ZipFile(zip_file_path, 'w') as zipf:
+            zipf.write(temp_file_path, arcname=filename)
+
+        # Optionally remove the CSV file after zipping
+        os.remove(temp_file_path)
+
+        return zip_file_path
     return None
 
-# Main app
+# Create download button for zipped CSV
+def create_download_button(file_path):
+    if file_path and os.path.exists(file_path):
+        with open(file_path, "rb") as file:
+            st.download_button(
+                label="Download full CSV as ZIP",
+                data=file,
+                file_name=os.path.basename(file_path),
+                mime="application/zip"
+            )
+
+# Main app function
 def main():
     init_app()
 
@@ -164,16 +163,19 @@ def main():
                         
                         df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)  # Size in MB
                         
-                        limited_result = result_df.head(MAX_ROWS_DISPLAY)
-                        bot_response_2_placeholder.dataframe(limited_result)
-                        info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
+                        if df_size > SIZE_LIMIT_MB:
+                            limited_result = result_df.head(MAX_ROWS_DISPLAY)
+                            bot_response_2_placeholder.dataframe(limited_result)
+                            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
+                        else:
+                            bot_response_2_placeholder.dataframe(result_df)
+                            info_placeholder.info(f"Showing all rows. Total size: {df_size:.2f} MB")
                         
-                        download_placeholder.download_button(
-                            label="Download full CSV",
-                            data=generate_csv,
-                            file_name="full_result.csv",
-                            mime="text/csv",
-                        )
+                        # Generate ZIP file and provide download button
+                        zip_file_path = generate_zip_file()
+                        if zip_file_path:
+                            # Place the download button after displaying the table
+                            create_download_button(zip_file_path)
                         
                         result_response = f"Query executed successfully. {len(result_df)} rows returned."
                         handle_interaction(user_input, result_response)
@@ -221,56 +223,33 @@ def main():
                         sql_response = generate_sql(question)
                         st.session_state['last_sql'] = sql_response
                         bot_response_1_placeholder.code(sql_response, language="sql")
+
                         result_df = execute_query(sql_response)
                         
                         df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)  # Size in MB
                         
-                        limited_result = result_df.head(MAX_ROWS_DISPLAY)
-                        bot_response_2_placeholder.dataframe(limited_result)
-                        info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
+                        if df_size > SIZE_LIMIT_MB:
+                            limited_result = result_df.head(MAX_ROWS_DISPLAY)
+                            bot_response_2_placeholder.dataframe(limited_result)
+                            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
+                        else:
+                            bot_response_2_placeholder.dataframe(result_df)
+                            info_placeholder.info(f"Showing all rows. Total size: {df_size:.2f} MB")
                         
-                        download_placeholder.download_button(
-                            label="Download full CSV",
-                            data=generate_csv,
-                            file_name="full_result.csv",
-                            mime="text/csv",
-                        )
+                        # Generate ZIP file and provide download button
+                        zip_file_path = generate_zip_file()
+                        if zip_file_path:
+                            # Place the download button after displaying the table
+                            create_download_button(zip_file_path)
                         
                         result_response = f"Query executed successfully. {len(result_df)} rows returned."
                         handle_interaction(question, result_response)
                     except Exception as e:
-                        logging.error(f"Error processing sample question: {str(e)}")
+                        logging.error(f"Error processing query: {str(e)}")
                         info_placeholder.error(f"An error occurred while processing your query: {str(e)}")
 
-    with left_column:
-        st.markdown("""
-        Welcome to NeuroFlake! 🧠❄️
-        
-        NeuroFlake is an AI-powered text-to-SQL tool designed to help you interact with your Snowflake data warehouse using natural language. Here's how it works:
-
-        1. **Ask a Question**: Type your question about your data in plain English.
-        2. **Generate SQL**: NeuroFlake will interpret your question and generate the appropriate SQL query.
-        3. **View Results**: The query will be executed on your Snowflake database, and the results will be displayed.
-        4. **Iterate**: Refine your question or ask follow-up questions to dive deeper into your data.
-
-        You can use the sample questions provided or create your own. NeuroFlake is here to make data analysis accessible to everyone, regardless of their SQL expertise.
-
-        Let's explore your data together!
-        """)
-        
-        st.markdown('##### Sample Data Schema:')
-        data = {
-            'Table': ['CUSTOMERS', 'ORDERS', 'PRODUCTS', 'SALES'],
-            'Columns': [
-                'customer_id, name, email, segment',
-                'order_id, customer_id, order_date, total_amount',
-                'product_id, name, category, price',
-                'sale_id, product_id, quantity, revenue'
-            ]
-        }
-        df = pd.DataFrame(data)
-        
-        st.dataframe(df, height=500, use_container_width=True)
+    # Add some spacing for better UI
+    st.markdown("<br><br>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
