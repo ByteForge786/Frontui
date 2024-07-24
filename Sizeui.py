@@ -7,9 +7,9 @@ import os
 from datetime import datetime
 import hashlib
 import logging
-import base64
 import tempfile
 import io
+import uuid
 
 # Set up logging
 logging.basicConfig(filename='app.log', level=logging.INFO, 
@@ -23,6 +23,11 @@ CSV_FILE = 'user_interactions.csv'
 MAX_RETRIES = 3
 MAX_ROWS_DISPLAY = 1000
 SIZE_LIMIT_MB = 190
+DOWNLOAD_FOLDER = "downloads"
+
+# Create download folder if it doesn't exist
+if not os.path.exists(DOWNLOAD_FOLDER):
+    os.makedirs(DOWNLOAD_FOLDER)
 
 # Initialize CSV file
 def init_csv():
@@ -65,8 +70,8 @@ def init_app():
         st.session_state['session_id'] = generate_session_id()
     if 'last_question' not in st.session_state:
         st.session_state['last_question'] = None
-    if 'temp_file_path' not in st.session_state:
-        st.session_state['temp_file_path'] = None
+    if 'download_id' not in st.session_state:
+        st.session_state['download_id'] = None
 
 # Mock function for SQL generation (replace with actual implementation)
 def generate_sql(question):
@@ -116,18 +121,16 @@ def update_feedback(feedback_type, question):
             logging.error(f"Error updating feedback: {str(e)}")
     return False
 
-# Function to save dataframe to temporary file
-def save_dataframe_to_temp_csv(df):
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
-        df.to_csv(tmp.name, index=False)
-        return tmp.name
+# Function to save dataframe to file for download
+def save_dataframe_for_download(df):
+    download_id = str(uuid.uuid4())
+    file_path = os.path.join(DOWNLOAD_FOLDER, f"{download_id}.csv")
+    df.to_csv(file_path, index=False)
+    return download_id
 
-# Function to get CSV download link
-def get_csv_download_link(file_path, filename="full_result.csv"):
-    with open(file_path, 'rb') as f:
-        data = f.read()
-    b64 = base64.b64encode(data).decode()
-    return f'<a href="data:application/octet-stream;base64,{b64}" download="{filename}">Download full CSV</a>'
+# Function to get download URL
+def get_download_url(download_id):
+    return f"/download/{download_id}"
 
 # Main app
 def main():
@@ -168,13 +171,13 @@ def main():
                             bot_response_2_placeholder.dataframe(limited_result)
                             info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
                             
-                            # Save full result to a temporary file
-                            temp_file_path = save_dataframe_to_temp_csv(result_df)
-                            st.session_state['temp_file_path'] = temp_file_path
+                            # Save full result and get download ID
+                            download_id = save_dataframe_for_download(result_df)
+                            st.session_state['download_id'] = download_id
                             
-                            # Generate download link
-                            download_link = get_csv_download_link(temp_file_path)
-                            download_placeholder.markdown(download_link, unsafe_allow_html=True)
+                            # Create download button
+                            download_url = get_download_url(download_id)
+                            download_placeholder.markdown(f'<a href="{download_url}" target="_blank">Download full CSV</a>', unsafe_allow_html=True)
                         else:
                             bot_response_2_placeholder.dataframe(result_df)
                         
@@ -232,13 +235,13 @@ def main():
                             bot_response_2_placeholder.dataframe(limited_result)
                             info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
                             
-                            # Save full result to a temporary file
-                            temp_file_path = save_dataframe_to_temp_csv(result_df)
-                            st.session_state['temp_file_path'] = temp_file_path
+                            # Save full result and get download ID
+                            download_id = save_dataframe_for_download(result_df)
+                            st.session_state['download_id'] = download_id
                             
-                            # Generate download link
-                            download_link = get_csv_download_link(temp_file_path)
-                            download_placeholder.markdown(download_link, unsafe_allow_html=True)
+                            # Create download button
+                            download_url = get_download_url(download_id)
+                            download_placeholder.markdown(f'<a href="{download_url}" target="_blank">Download full CSV</a>', unsafe_allow_html=True)
                         else:
                             bot_response_2_placeholder.dataframe(result_df)
                         
@@ -277,14 +280,6 @@ def main():
         df = pd.DataFrame(data)
         
         st.dataframe(df, height=500, use_container_width=True)
-
-    # Clean up temporary file at the end of the session
-    if st.session_state.get('temp_file_path'):
-        try:
-            os.unlink(st.session_state['temp_file_path'])
-            del st.session_state['temp_file_path']
-        except Exception as e:
-            logging.error(f"Error deleting temporary file: {str(e)}")
 
 if __name__ == "__main__":
     main()
