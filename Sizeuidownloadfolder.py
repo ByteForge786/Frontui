@@ -10,6 +10,7 @@ import logging
 import tempfile
 import io
 import uuid
+import base64
 
 # Set up logging
 logging.basicConfig(filename='app.log', level=logging.INFO, 
@@ -126,11 +127,15 @@ def save_dataframe_for_download(df):
     download_id = str(uuid.uuid4())
     file_path = os.path.join(DOWNLOAD_FOLDER, f"{download_id}.csv")
     df.to_csv(file_path, index=False)
-    return download_id
+    return download_id, file_path
 
-# Function to get download URL
-def get_download_url(download_id):
-    return f"/download/{download_id}"
+# Function to get download link
+def get_download_link(file_path):
+    with open(file_path, "rb") as f:
+        bytes = f.read()
+        b64 = base64.b64encode(bytes).decode()
+        href = f'<a href="data:file/csv;base64,{b64}" download="results.csv">Download full CSV</a>'
+        return href
 
 # Main app
 def main():
@@ -171,13 +176,13 @@ def main():
                             bot_response_2_placeholder.dataframe(limited_result)
                             info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
                             
-                            # Save full result and get download ID
-                            download_id = save_dataframe_for_download(result_df)
+                            # Save full result and get download ID and file path
+                            download_id, file_path = save_dataframe_for_download(result_df)
                             st.session_state['download_id'] = download_id
                             
-                            # Create download button
-                            download_url = get_download_url(download_id)
-                            download_placeholder.markdown(f'<a href="{download_url}" target="_blank">Download full CSV</a>', unsafe_allow_html=True)
+                            # Create download link
+                            download_link = get_download_link(file_path)
+                            download_placeholder.markdown(download_link, unsafe_allow_html=True)
                         else:
                             bot_response_2_placeholder.dataframe(result_df)
                         
@@ -235,13 +240,13 @@ def main():
                             bot_response_2_placeholder.dataframe(limited_result)
                             info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
                             
-                            # Save full result and get download ID
-                            download_id = save_dataframe_for_download(result_df)
+                            # Save full result and get download ID and file path
+                            download_id, file_path = save_dataframe_for_download(result_df)
                             st.session_state['download_id'] = download_id
                             
-                            # Create download button
-                            download_url = get_download_url(download_id)
-                            download_placeholder.markdown(f'<a href="{download_url}" target="_blank">Download full CSV</a>', unsafe_allow_html=True)
+                            # Create download link
+                            download_link = get_download_link(file_path)
+                            download_placeholder.markdown(download_link, unsafe_allow_html=True)
                         else:
                             bot_response_2_placeholder.dataframe(result_df)
                         
