@@ -7,9 +7,9 @@ import os
 from datetime import datetime
 import hashlib
 import logging
-import tempfile
 import io
 import uuid
+import base64
 
 # Set up logging
 logging.basicConfig(filename='app.log', level=logging.INFO, 
@@ -23,11 +23,6 @@ CSV_FILE = 'user_interactions.csv'
 MAX_RETRIES = 3
 MAX_ROWS_DISPLAY = 1000
 SIZE_LIMIT_MB = 190
-DOWNLOAD_FOLDER = "downloads"
-
-# Create download folder if it doesn't exist
-if not os.path.exists(DOWNLOAD_FOLDER):
-    os.makedirs(DOWNLOAD_FOLDER)
 
 # Initialize CSV file
 def init_csv():
@@ -70,8 +65,6 @@ def init_app():
         st.session_state['session_id'] = generate_session_id()
     if 'last_question' not in st.session_state:
         st.session_state['last_question'] = None
-    if 'download_id' not in st.session_state:
-        st.session_state['download_id'] = None
 
 # Mock function for SQL generation (replace with actual implementation)
 def generate_sql(question):
@@ -121,16 +114,12 @@ def update_feedback(feedback_type, question):
             logging.error(f"Error updating feedback: {str(e)}")
     return False
 
-# Function to save dataframe to file for download
-def save_dataframe_for_download(df):
-    download_id = str(uuid.uuid4())
-    file_path = os.path.join(DOWNLOAD_FOLDER, f"{download_id}.csv")
-    df.to_csv(file_path, index=False)
-    return download_id
-
-# Function to get download URL
-def get_download_url(download_id):
-    return f"/download/{download_id}"
+# Function to create a download link for streaming
+def get_stream_download_link(df, filename="full_result.csv"):
+    csv = df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode()).decode()
+    href = f'data:file/csv;base64,{b64}'
+    return f'<a href="{href}" download="{filename}">Download full CSV</a>'
 
 # Main app
 def main():
@@ -171,13 +160,9 @@ def main():
                             bot_response_2_placeholder.dataframe(limited_result)
                             info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
                             
-                            # Save full result and get download ID
-                            download_id = save_dataframe_for_download(result_df)
-                            st.session_state['download_id'] = download_id
-                            
-                            # Create download button
-                            download_url = get_download_url(download_id)
-                            download_placeholder.markdown(f'<a href="{download_url}" target="_blank">Download full CSV</a>', unsafe_allow_html=True)
+                            # Create streaming download link
+                            download_link = get_stream_download_link(result_df)
+                            download_placeholder.markdown(download_link, unsafe_allow_html=True)
                         else:
                             bot_response_2_placeholder.dataframe(result_df)
                         
@@ -235,13 +220,9 @@ def main():
                             bot_response_2_placeholder.dataframe(limited_result)
                             info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
                             
-                            # Save full result and get download ID
-                            download_id = save_dataframe_for_download(result_df)
-                            st.session_state['download_id'] = download_id
-                            
-                            # Create download button
-                            download_url = get_download_url(download_id)
-                            download_placeholder.markdown(f'<a href="{download_url}" target="_blank">Download full CSV</a>', unsafe_allow_html=True)
+                            # Create streaming download link
+                            download_link = get_stream_download_link(result_df)
+                            download_placeholder.markdown(download_link, unsafe_allow_html=True)
                         else:
                             bot_response_2_placeholder.dataframe(result_df)
                         
