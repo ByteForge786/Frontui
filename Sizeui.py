@@ -8,6 +8,8 @@ from datetime import datetime
 import hashlib
 import logging
 import base64
+import tempfile
+import io
 
 # Set up logging
 logging.basicConfig(filename='app.log', level=logging.INFO, 
@@ -19,26 +21,25 @@ st.set_page_config(page_title="NeuroFlake", layout="wide", initial_sidebar_state
 # Constants
 CSV_FILE = 'user_interactions.csv'
 MAX_RETRIES = 3
+MAX_ROWS_DISPLAY = 1000
+SIZE_LIMIT_MB = 190
 
 # Initialize CSV file
 def init_csv():
     if not os.path.exists(CSV_FILE):
-        df = pd.DataFrame(columns=['timestamp', 'question', 'result', 'upvote', 'downvote', 'session_id'])
-        df.to_csv(CSV_FILE, index=False)
+        pd.DataFrame(columns=['timestamp', 'question', 'result', 'upvote', 'downvote', 'session_id']).to_csv(CSV_FILE, index=False)
 
 # Load CSV file
 @st.cache_data
 def load_data():
     for _ in range(MAX_RETRIES):
         try:
-            data = pd.read_csv(CSV_FILE)
-            return data
+            return pd.read_csv(CSV_FILE)
         except pd.errors.EmptyDataError:
-            logging.warning(f"CSV file {CSV_FILE} is empty. Initializing with header.")
             init_csv()
         except Exception as e:
             logging.error(f"Error loading CSV: {str(e)}")
-    return pd.DataFrame()  # Return empty DataFrame if all retries fail
+    return pd.DataFrame()
 
 # Append data to CSV
 def append_to_csv(new_data):
@@ -59,15 +60,13 @@ def generate_session_id():
 def init_app():
     init_csv()
     if 'chat' not in st.session_state:
-        st.session_state['chat'] = {
-            "user_input": None,
-            "bot_response_1": None,
-            "bot_response_2": None,
-        }
+        st.session_state['chat'] = {"user_input": None, "bot_response_1": None, "bot_response_2": None}
     if 'session_id' not in st.session_state:
         st.session_state['session_id'] = generate_session_id()
     if 'last_question' not in st.session_state:
         st.session_state['last_question'] = None
+    if 'temp_file_path' not in st.session_state:
+        st.session_state['temp_file_path'] = None
 
 # Mock function for SQL generation (replace with actual implementation)
 def generate_sql(question):
@@ -75,14 +74,12 @@ def generate_sql(question):
 
 # Mock function for query execution (replace with actual implementation)
 def execute_query(sql):
-    # Mock large DataFrame (adjust size as needed for testing)
-    n_rows = 1000000
-    df = pd.DataFrame({
+    n_rows = 10000000  # Increased for testing large datasets
+    return pd.DataFrame({
         'id': range(n_rows),
         'value': np.random.rand(n_rows),
         'category': np.random.choice(['A', 'B', 'C', 'D'], n_rows)
     })
-    return df
 
 # Handle user interaction
 def handle_interaction(question, result):
@@ -103,7 +100,6 @@ def update_feedback(feedback_type, question):
         try:
             data = pd.read_csv(CSV_FILE)
             if not data.empty:
-                # Find the most recent row with the matching question
                 matching_rows = data[data['question'] == question]
                 if not matching_rows.empty:
                     latest_index = matching_rows.index[-1]
@@ -120,12 +116,18 @@ def update_feedback(feedback_type, question):
             logging.error(f"Error updating feedback: {str(e)}")
     return False
 
+# Function to save dataframe to temporary file
+def save_dataframe_to_temp_csv(df):
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
+        df.to_csv(tmp.name, index=False)
+        return tmp.name
+
 # Function to get CSV download link
-def get_csv_download_link(df, filename="full_result.csv"):
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
-    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download full CSV</a>'
-    return href
+def get_csv_download_link(file_path, filename="full_result.csv"):
+    with open(file_path, 'rb') as f:
+        data = f.read()
+    b64 = base64.b64encode(data).decode()
+    return f'<a href="data:application/octet-stream;base64,{b64}" download="{filename}">Download full CSV</a>'
 
 # Main app
 def main():
@@ -141,6 +143,8 @@ def main():
         with st.chat_message(name="assistant", avatar="assistant"):
             bot_response_1_placeholder = st.empty()
             bot_response_2_placeholder = st.empty()
+            info_placeholder = st.empty()
+            download_placeholder = st.empty()
 
         user_input = st.text_area("Enter your question about the data:")
 
@@ -157,15 +161,20 @@ def main():
                         
                         result_df = execute_query(sql_response)
                         
-                        # Check the size of the DataFrame
                         df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)  # Size in MB
                         
-                        if df_size > 190:  # If larger than 190MB
-                            limited_result = result_df.head(1000)  # Show first 1000 rows
+                        if df_size > SIZE_LIMIT_MB:
+                            limited_result = result_df.head(MAX_ROWS_DISPLAY)
                             bot_response_2_placeholder.dataframe(limited_result)
-                            st.info(f"Showing first 1000 rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
-                            download_link = get_csv_download_link(result_df)
-                            st.markdown(download_link, unsafe_allow_html=True)
+                            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
+                            
+                            # Save full result to a temporary file
+                            temp_file_path = save_dataframe_to_temp_csv(result_df)
+                            st.session_state['temp_file_path'] = temp_file_path
+                            
+                            # Generate download link
+                            download_link = get_csv_download_link(temp_file_path)
+                            download_placeholder.markdown(download_link, unsafe_allow_html=True)
                         else:
                             bot_response_2_placeholder.dataframe(result_df)
                         
@@ -173,7 +182,7 @@ def main():
                         handle_interaction(user_input, result_response)
                     except Exception as e:
                         logging.error(f"Error processing query: {str(e)}")
-                        st.error("An error occurred while processing your query. Please try again.")
+                        info_placeholder.error(f"An error occurred while processing your query: {str(e)}")
 
         with button_column[1]:
             if st.button("👍 Upvote", key="upvote", use_container_width=True):
@@ -218,12 +227,18 @@ def main():
                         
                         df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)  # Size in MB
                         
-                        if df_size > 190:  # If larger than 190MB
-                            limited_result = result_df.head(1000)  # Show first 1000 rows
+                        if df_size > SIZE_LIMIT_MB:
+                            limited_result = result_df.head(MAX_ROWS_DISPLAY)
                             bot_response_2_placeholder.dataframe(limited_result)
-                            st.info(f"Showing first 1000 rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
-                            download_link = get_csv_download_link(result_df)
-                            st.markdown(download_link, unsafe_allow_html=True)
+                            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows due to large result size ({df_size:.2f} MB)")
+                            
+                            # Save full result to a temporary file
+                            temp_file_path = save_dataframe_to_temp_csv(result_df)
+                            st.session_state['temp_file_path'] = temp_file_path
+                            
+                            # Generate download link
+                            download_link = get_csv_download_link(temp_file_path)
+                            download_placeholder.markdown(download_link, unsafe_allow_html=True)
                         else:
                             bot_response_2_placeholder.dataframe(result_df)
                         
@@ -231,7 +246,7 @@ def main():
                         handle_interaction(question, result_response)
                     except Exception as e:
                         logging.error(f"Error processing sample question: {str(e)}")
-                        st.error("An error occurred while processing your query. Please try again.")
+                        info_placeholder.error(f"An error occurred while processing your query: {str(e)}")
 
     with left_column:
         st.markdown("""
@@ -262,6 +277,14 @@ def main():
         df = pd.DataFrame(data)
         
         st.dataframe(df, height=500, use_container_width=True)
+
+    # Clean up temporary file at the end of the session
+    if st.session_state.get('temp_file_path'):
+        try:
+            os.unlink(st.session_state['temp_file_path'])
+            del st.session_state['temp_file_path']
+        except Exception as e:
+            logging.error(f"Error deleting temporary file: {str(e)}")
 
 if __name__ == "__main__":
     main()
