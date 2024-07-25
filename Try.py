@@ -1,47 +1,43 @@
-import warnings
+ import warnings
 warnings.filterwarnings('ignore')
 import pandas as pd
-import numpy as np
 import streamlit as st
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 import hashlib
 import logging
-import io
-import uuid
-import base64
+from snowflake.connector.errors import ProgrammingError
 
 # Set up logging
 logging.basicConfig(filename='app.log', level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Set page config
-st.set_page_config(page_title="NeuroFlake", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="NhanceBot", layout="wide", initial_sidebar_state="collapsed")
 
 # Constants
 CSV_FILE = 'user_interactions.csv'
 MAX_RETRIES = 3
-MAX_ROWS_DISPLAY = 1000
-SIZE_LIMIT_MB = 190
-DOWNLOAD_FOLDER = "downloads"
-DOWNLOAD_EXPIRY_HOURS = 1  # Files will be deleted after this many hours
 
 # Initialize CSV file
 def init_csv():
     if not os.path.exists(CSV_FILE):
-        pd.DataFrame(columns=['timestamp', 'question', 'result', 'upvote', 'downvote', 'session_id']).to_csv(CSV_FILE, index=False)
+        df = pd.DataFrame(columns=['timestamp', 'question', 'result', 'upvote', 'downvote', 'session_id'])
+        df.to_csv(CSV_FILE, index=False)
 
 # Load CSV file
 @st.cache_data
 def load_data():
     for _ in range(MAX_RETRIES):
         try:
-            return pd.read_csv(CSV_FILE)
+            data = pd.read_csv(CSV_FILE)
+            return data
         except pd.errors.EmptyDataError:
+            logging.warning(f"CSV file {CSV_FILE} is empty. Initializing with header.")
             init_csv()
         except Exception as e:
             logging.error(f"Error loading CSV: {str(e)}")
-    return pd.DataFrame()
+    return pd.DataFrame()  # Return empty DataFrame if all retries fail
 
 # Append data to CSV
 def append_to_csv(new_data):
@@ -61,14 +57,12 @@ def generate_session_id():
 # Initialize app
 def init_app():
     init_csv()
-    if 'chat' not in st.session_state:
-        st.session_state['chat'] = {"user_input": None, "bot_response_1": None, "bot_response_2": None}
+    if 'chat_history' not in st.session_state:
+        st.session_state['chat_history'] = []
     if 'session_id' not in st.session_state:
         st.session_state['session_id'] = generate_session_id()
     if 'last_question' not in st.session_state:
         st.session_state['last_question'] = None
-    if 'last_sql' not in st.session_state:
-        st.session_state['last_sql'] = None
 
 # Mock function for SQL generation (replace with actual implementation)
 def generate_sql(question):
@@ -76,12 +70,8 @@ def generate_sql(question):
 
 # Mock function for query execution (replace with actual implementation)
 def execute_query(sql):
-    n_rows = 10000000  # Increased for testing large datasets
-    return pd.DataFrame({
-        'id': range(n_rows),
-        'value': np.random.rand(n_rows),
-        'category': np.random.choice(['A', 'B', 'C', 'D'], n_rows)
-    })
+    # This is a mock implementation. Replace with actual query execution.
+    raise ProgrammingError("Object 'SAMPLE_TABLE' does not exist or not authorized.")
 
 # Handle user interaction
 def handle_interaction(question, result):
@@ -118,166 +108,144 @@ def update_feedback(feedback_type, question):
             logging.error(f"Error updating feedback: {str(e)}")
     return False
 
-# Function to clean up old download files
-def cleanup_old_files():
-    now = datetime.now()
-    for filename in os.listdir(DOWNLOAD_FOLDER):
-        file_path = os.path.join(DOWNLOAD_FOLDER, filename)
-        file_modified = datetime.fromtimestamp(os.path.getmtime(file_path))
-        if now - file_modified > timedelta(hours=DOWNLOAD_EXPIRY_HOURS):
-            os.remove(file_path)
-
-# Function to generate CSV file and return its path
-def generate_csv_file():
-    if st.session_state['last_sql']:
-        result_df = execute_query(st.session_state['last_sql'])
-        filename = f"result_{uuid.uuid4().hex}.csv"
-        file_path = os.path.join(DOWNLOAD_FOLDER, filename)
-        result_df.to_csv(file_path, index=False)
-        return file_path
-    return None
+# Add to chat history
+def add_to_chat_history(question, sql_query, result):
+    st.session_state['chat_history'].append({
+        'question': question,
+        'sql_query': sql_query,
+        'result': result
+    })
 
 # Main app
 def main():
     init_app()
-    cleanup_old_files()  # Clean up old files at the start of each session
 
-    st.markdown('## NeuroFlake: AI-Powered Text-to-SQL for Snowflake')
+    # Date selection
+    today = date.today()
+    default_start = today - timedelta(days=7)
+    min_start_date = today - timedelta(days=60)
 
-    left_column, right_column = st.columns(2, gap="large")
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("Start Date", 
+                                   value=default_start,
+                                   min_value=min_start_date,
+                                   max_value=today,
+                                   format="DD/MM/YYYY")
 
-    with right_column.container():
-        with st.chat_message(name="user", avatar="user"):
-            user_input_placeholder = st.empty()
-        with st.chat_message(name="assistant", avatar="assistant"):
-            bot_response_1_placeholder = st.empty()
-            bot_response_2_placeholder = st.empty()
-            info_placeholder = st.empty()
-            download_placeholder = st.empty()
+    with col2:
+        max_end_date = min(start_date + timedelta(days=60), today)
+        end_date = st.date_input("End Date", 
+                                 value=today,
+                                 min_value=start_date,
+                                 max_value=max_end_date,
+                                 format="DD/MM/YYYY")
 
-        user_input = st.text_area("Enter your question about the data:")
+    if (end_date - start_date).days > 60:
+        st.error("The difference between start and end date cannot exceed 2 months.")
+        return
 
-        button_column = st.columns(3)
-        button_info = st.empty()
+    if not start_date or not end_date:
+        st.warning("Please select both start and end dates to begin.")
+        return
 
-        with button_column[2]:
-            if st.button("🚀 Generate SQL", key="generate_sql", use_container_width=True):
-                if user_input:
-                    user_input_placeholder.markdown(user_input)
-                    try:
-                        sql_response = generate_sql(user_input)
-                        st.session_state['last_sql'] = sql_response
-                        bot_response_1_placeholder.code(sql_response, language="sql")
-                        
-                        result_df = execute_query(sql_response)
-                        
-                        df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)  # Size in MB
-                        
-                        limited_result = result_df.head(MAX_ROWS_DISPLAY)
-                        bot_response_2_placeholder.dataframe(limited_result)
-                        info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
-                        
-                        # Generate CSV file and provide download link
-                        csv_file_path = generate_csv_file()
-                        if csv_file_path:
-                            download_url = f"<a href='file://{csv_file_path}' download>Download full CSV</a>"
-                            download_placeholder.markdown(download_url, unsafe_allow_html=True)
-                        
-                        result_response = f"Query executed successfully. {len(result_df)} rows returned."
-                        handle_interaction(user_input, result_response)
-                    except Exception as e:
-                        logging.error(f"Error processing query: {str(e)}")
-                        info_placeholder.error(f"An error occurred while processing your query: {str(e)}")
+    # Logo and title
+    col1, col2 = st.columns([0.2, 1.5])
+    with col1:
+        st.image("logo.png", width=60)
+    with col2:
+        st.markdown("<h1 style='color: maroon; margin-bottom: 0;'>NhanceBot</h1>", unsafe_allow_html=True)
 
-        with button_column[1]:
-            if st.button("👍 Upvote", key="upvote", use_container_width=True):
-                if st.session_state.get('last_question'):
-                    if update_feedback('upvote', st.session_state['last_question']):
-                        button_info.success("Thanks for your feedback! NeuroFlake Memory updated")
-                    else:
-                        button_info.error("Failed to update feedback. Please try again.")
-                else:
-                    button_info.warning("No recent question to upvote.")
+    st.markdown(f"""
+    NhanceBot is an AI-powered Data Insight tool designed to help you 
+    interact with your Snowflake data warehouse using natural language.
+    
+    Selected date range: {start_date.strftime('%d/%m/%Y')} to {end_date.strftime('%d/%m/%Y')}
+    """)
 
-        with button_column[0]:
-            if st.button("👎 Downvote", key="downvote", use_container_width=True):
-                if st.session_state.get('last_question'):
-                    if update_feedback('downvote', st.session_state['last_question']):
-                        button_info.warning("We're sorry the result wasn't helpful. Your feedback will help us improve!")
-                    else:
-                        button_info.error("Failed to update feedback. Please try again.")
-                else:
-                    button_info.warning("No recent question to downvote.")
-
-        st.markdown("##### Sample questions you can ask:")
-        sample_questions = [
-            "What is the total revenue for each product category?",
-            "Who are the top 5 customers by sales volume?",
-            "What's the average order value by month?",
-            "Which regions have seen the highest growth in the last quarter?",
-            "What's the distribution of customer segments across different product lines?"
+    st.markdown('##### Sample Data Schema:')
+    data = {
+        'Table': ['CUSTOMERS', 'ORDERS', 'PRODUCTS', 'SALES'],
+        'Columns': [
+            'customer_id, name, email, segment',
+            'order_id, customer_id, order_date, total_amount',
+            'product_id, name, category, price',
+            'sale_id, product_id, quantity, revenue'
         ]
-        
-        for i, question in enumerate(sample_questions):
-            question_columns = st.columns([7,1])
-            with question_columns[0]:
-                st.markdown(f"<div class='mytext'>{question}</div>", unsafe_allow_html=True)
-            with question_columns[1]:
-                if st.button(f"Ask", use_container_width=True, key=f'question{i}'):
-                    user_input_placeholder.markdown(question)
-                    try:
-                        sql_response = generate_sql(question)
-                        st.session_state['last_sql'] = sql_response
-                        bot_response_1_placeholder.code(sql_response, language="sql")
-                        result_df = execute_query(sql_response)
-                        
-                        df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)  # Size in MB
-                        
-                        limited_result = result_df.head(MAX_ROWS_DISPLAY)
-                        bot_response_2_placeholder.dataframe(limited_result)
-                        info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
-                        
-                        # Generate CSV file and provide download link
-                        csv_file_path = generate_csv_file()
-                        if csv_file_path:
-                            download_url = f"<a href='file://{csv_file_path}' download>Download full CSV</a>"
-                            download_placeholder.markdown(download_url, unsafe_allow_html=True)
-                        
-                        result_response = f"Query executed successfully. {len(result_df)} rows returned."
-                        handle_interaction(question, result_response)
-                    except Exception as e:
-                        logging.error(f"Error processing sample question: {str(e)}")
-                        info_placeholder.error(f"An error occurred while processing your query: {str(e)}")
+    }
+    df = pd.DataFrame(data)
+    
+    st.dataframe(df, height=500, use_container_width=True)
 
-    with left_column:
-        st.markdown("""
-        Welcome to NeuroFlake! 🧠❄️
-        
-        NeuroFlake is an AI-powered text-to-SQL tool designed to help you interact with your Snowflake data warehouse using natural language. Here's how it works:
+    # Display chat history
+    for entry in st.session_state['chat_history']:
+        with st.chat_message(name="user", avatar="user"):
+            st.markdown(entry['question'])
+        with st.chat_message(name="assistant", avatar="assistant"):
+            st.code(entry['sql_query'], language="sql")
+            st.dataframe(entry['result'])
 
-        1. **Ask a Question**: Type your question about your data in plain English.
-        2. **Generate SQL**: NeuroFlake will interpret your question and generate the appropriate SQL query.
-        3. **View Results**: The query will be executed on your Snowflake database, and the results will be displayed.
-        4. **Iterate**: Refine your question or ask follow-up questions to dive deeper into your data.
+    with st.chat_message(name="user", avatar="user"):
+        user_input_placeholder = st.empty()
+    with st.chat_message(name="assistant", avatar="assistant"):
+        bot_response_1_placeholder = st.empty()
+        bot_response_2_placeholder = st.empty()
 
-        You can use the sample questions provided or create your own. NeuroFlake is here to make data analysis accessible to everyone, regardless of their SQL expertise.
+    user_input = st.text_area("Enter your question about the data:")
 
-        Let's explore your data together!
-        """)
-        
-        st.markdown('##### Sample Data Schema:')
-        data = {
-            'Table': ['CUSTOMERS', 'ORDERS', 'PRODUCTS', 'SALES'],
-            'Columns': [
-                'customer_id, name, email, segment',
-                'order_id, customer_id, order_date, total_amount',
-                'product_id, name, category, price',
-                'sale_id, product_id, quantity, revenue'
-            ]
-        }
-        df = pd.DataFrame(data)
-        
-        st.dataframe(df, height=500, use_container_width=True)
+    button_column = st.columns(3)
+    button_info = st.empty()
+
+    with button_column[2]:
+        if st.button("🚀 Generate SQL", key="generate_sql", use_container_width=True):
+            if user_input:
+                user_input_placeholder.markdown(user_input)
+                try:
+                    with st.spinner("Generating SQL..."):
+                        sql_response = generate_sql(user_input)
+                    bot_response_1_placeholder.code(sql_response, language="sql")
+                    result_df = execute_query(sql_response)
+                    bot_response_2_placeholder.dataframe(result_df)
+                    handle_interaction(user_input, sql_response)
+                    add_to_chat_history(user_input, sql_response, result_df)
+                except ProgrammingError as e:
+                    error_message, error_type = parse_snowflake_error(str(e), sql_response)
+                    st.error(f"I'm sorry, I ran into a problem: {error_message}")
+                    st.info("Here are some tips that might help:")
+                    tips = get_error_tips(error_type)
+                    for tip in tips:
+                        st.markdown(tip)
+                    if error_type == "unknown_error":
+                        st.markdown(f"For reference, the full error message was: {str(e)}")
+                    st.markdown("If none of these help, feel free to ask your question in a different way!")
+                except Exception as e:
+                    logging.error(f"Error processing query: {str(e)}")
+                    st.error("I'm having trouble understanding that. Could you try asking in a different way?")
+                    st.info("Here are some general tips that might help:")
+                    tips = get_error_tips("unknown_error")
+                    for tip in tips:
+                        st.markdown(tip)
+
+    with button_column[1]:
+        if st.button("👍 Upvote", key="upvote", use_container_width=True):
+            if st.session_state.get('last_question'):
+                if update_feedback('upvote', st.session_state['last_question']):
+                    button_info.success("Thanks for your feedback! NhanceBot Memory updated")
+                else:
+                    button_info.error("Failed to update feedback. Please try again.")
+            else:
+                button_info.warning("No recent question to upvote.")
+
+    with button_column[0]:
+        if st.button("👎 Downvote", key="downvote", use_container_width=True):
+            if st.session_state.get('last_question'):
+                if update_feedback('downvote', st.session_state['last_question']):
+                    button_info.warning("We're sorry the response didn't meet your expectations. Your feedback helps us improve.")
+                else:
+                    button_info.error("Failed to update feedback. Please try again.")
+            else:
+                button_info.warning("No recent question to downvote.")
 
 if __name__ == "__main__":
     main()
+
