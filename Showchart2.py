@@ -9,7 +9,7 @@ import hashlib
 import logging
 import uuid
 import zipfile
-import plotly.express as px  # Added for charts
+import plotly.express as px
 
 # Set up logging
 logging.basicConfig(filename='app.log', level=logging.INFO, 
@@ -72,6 +72,15 @@ def init_app():
         st.session_state['show_chart'] = False
     if 'current_df' not in st.session_state:
         st.session_state['current_df'] = None
+    # Add these new session states
+    if 'chat_history' not in st.session_state:
+        st.session_state['chat_history'] = []
+    if 'current_result' not in st.session_state:
+        st.session_state['current_result'] = None
+
+# Toggle chart visibility without losing state
+def toggle_chart():
+    st.session_state['show_chart'] = not st.session_state['show_chart']
 
 # Generate chart based on data
 def generate_chart(df):
@@ -104,7 +113,7 @@ def generate_sql(question):
 
 # Mock function for query execution
 def execute_query(sql):
-    n_rows = 10000000  # Increased for testing large datasets
+    n_rows = 10000000
     return pd.DataFrame({
         'id': range(n_rows),
         'value': np.random.rand(n_rows),
@@ -124,6 +133,32 @@ def handle_interaction(question, result):
     append_to_csv(new_data)
     st.session_state['last_question'] = question.strip().replace('\n', ' ')
 
+# Process query and update session state
+def process_query(question):
+    try:
+        sql_response = generate_sql(question)
+        st.session_state['last_sql'] = sql_response
+        result_df = execute_query(sql_response)
+        st.session_state['current_df'] = result_df
+        
+        df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)
+        
+        # Store the current result in session state
+        st.session_state['current_result'] = {
+            'question': question,
+            'sql': sql_response,
+            'df': result_df,
+            'df_size': df_size
+        }
+        
+        result_response = f"Query executed successfully. {len(result_df)} rows returned."
+        handle_interaction(question, result_response)
+        
+        return True
+    except Exception as e:
+        logging.error(f"Error processing query: {str(e)}")
+        return False
+
 # Generate a zip file containing the CSV file
 def generate_zip_file():
     if st.session_state['last_sql']:
@@ -133,17 +168,13 @@ def generate_zip_file():
         temp_file_path = os.path.join(ZIP_FOLDER, filename)
         os.makedirs(ZIP_FOLDER, exist_ok=True)
 
-        # Save CSV file to temp location
         result_df.to_csv(temp_file_path, index=False)
-
-        # Create a zip file
+        
         zip_file_path = os.path.join(ZIP_FOLDER, zip_filename)
         with zipfile.ZipFile(zip_file_path, 'w') as zipf:
             zipf.write(temp_file_path, arcname=filename)
-
-        # Optionally remove the CSV file after zipping
+        
         os.remove(temp_file_path)
-
         return zip_file_path
     return None
 
@@ -157,6 +188,37 @@ def create_download_button(file_path):
                 file_name=os.path.basename(file_path),
                 mime="application/zip"
             )
+
+# Display current result
+def display_current_result(bot_response_1_placeholder, bot_response_2_placeholder, 
+                         info_placeholder, download_placeholder, chart_container):
+    if st.session_state['current_result']:
+        result = st.session_state['current_result']
+        bot_response_1_placeholder.code(result['sql'], language="sql")
+        
+        if result['df_size'] > SIZE_LIMIT_MB:
+            limited_result = result['df'].head(MAX_ROWS_DISPLAY)
+            bot_response_2_placeholder.dataframe(limited_result)
+            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result['df'])} total rows. Total size: {result['df_size']:.2f} MB")
+        else:
+            bot_response_2_placeholder.dataframe(result['df'])
+            info_placeholder.info(f"Showing all rows. Total size: {result['df_size']:.2f} MB")
+        
+        zip_file_path = generate_zip_file()
+        if zip_file_path:
+            with download_placeholder:
+                create_download_button(zip_file_path)
+        
+        with chart_container:
+            if st.button("📊 Show/Hide Chart", on_click=toggle_chart):
+                pass
+            
+            if st.session_state['show_chart']:
+                fig = generate_chart(result['df'].head(1000))
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning("Could not generate chart for this data structure")
 
 # Main app function
 def main():
@@ -174,7 +236,7 @@ def main():
             bot_response_2_placeholder = st.empty()
             info_placeholder = st.empty()
             download_placeholder = st.empty()
-            chart_container = st.empty()  # Added for chart
+            chart_container = st.empty()
 
         user_input = st.text_area("Enter your question about the data:")
 
@@ -185,48 +247,11 @@ def main():
             if st.button("🚀 Generate SQL", key="generate_sql", use_container_width=True):
                 if user_input:
                     user_input_placeholder.markdown(user_input)
-                    try:
-                        sql_response = generate_sql(user_input)
-                        st.session_state['last_sql'] = sql_response
-                        bot_response_1_placeholder.code(sql_response, language="sql")
-                        
-                        result_df = execute_query(sql_response)
-                        st.session_state['current_df'] = result_df  # Store current df in session
-                        
-                        df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)  # Size in MB
-                        
-                        if df_size > SIZE_LIMIT_MB:
-                            limited_result = result_df.head(MAX_ROWS_DISPLAY)
-                            bot_response_2_placeholder.dataframe(limited_result)
-                            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
-                        else:
-                            bot_response_2_placeholder.dataframe(result_df)
-                            info_placeholder.info(f"Showing all rows. Total size: {df_size:.2f} MB")
-                        
-                        # Generate ZIP file and provide download button
-                        zip_file_path = generate_zip_file()
-                        if zip_file_path:
-                            # Place the download button after displaying the table
-                            with download_placeholder:
-                                create_download_button(zip_file_path)
-                        
-                        # Add chart toggle button and display
-                        with chart_container:
-                            if st.button("📊 Show/Hide Chart"):
-                                st.session_state['show_chart'] = not st.session_state['show_chart']
-                            
-                            if st.session_state['show_chart'] and st.session_state['current_df'] is not None:
-                                fig = generate_chart(st.session_state['current_df'].head(1000))
-                                if fig:
-                                    st.plotly_chart(fig, use_container_width=True)
-                                else:
-                                    st.warning("Could not generate chart for this data structure")
-                        
-                        result_response = f"Query executed successfully. {len(result_df)} rows returned."
-                        handle_interaction(user_input, result_response)
-                    except Exception as e:
-                        logging.error(f"Error processing query: {str(e)}")
-                        info_placeholder.error(f"An error occurred while processing your query: {str(e)}")
+                    if process_query(user_input):
+                        display_current_result(bot_response_1_placeholder, bot_response_2_placeholder,
+                                            info_placeholder, download_placeholder, chart_container)
+                    else:
+                        info_placeholder.error("An error occurred while processing your query.")
 
         with button_column[1]:
             if st.button("👍 Upvote", key="upvote", use_container_width=True):
@@ -264,50 +289,12 @@ def main():
             with question_columns[1]:
                 if st.button(f"Ask", use_container_width=True, key=f'question{i}'):
                     user_input_placeholder.markdown(question)
-                    try:
-                        sql_response = generate_sql(question)
-                        st.session_state['last_sql'] = sql_response
-                        bot_response_1_placeholder.code(sql_response, language="sql")
+                    if process_query(question):
+                        display_current_result(bot_response_1_placeholder, bot_response_2_placeholder,
+                                            info_placeholder, download_placeholder, chart_container)
+                    else:
+                        info_placeholder.error("An error occurred while processing your query.")
 
-                        result_df = execute_query(sql_response)
-                        st.session_state['current_df'] = result_df  # Store current df in session
-                        
-                        df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)  # Size in MB
-                        
-                        if df_size > SIZE_LIMIT_MB:
-                            limited_result = result_df.head(MAX_ROWS_DISPLAY)
-                            bot_response_2_placeholder.dataframe(limited_result)
-                            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
-                        else:
-                            bot_response_2_placeholder.dataframe(result_df)
-                            info_placeholder.info(f"Showing all rows. Total size: {df_size:.2f} MB")
-                        
-                        # Generate ZIP file and provide download button
-                        zip_file_path = generate_zip_file()
-                        if zip_file_path:
-                            # Place the download button after displaying the table
-                            with download_placeholder:
-                                create_download_button(zip_file_path)
-                        
-                        # Add chart toggle button and display
-                        with chart_container:
-                            if st.button("📊 Show/Hide Chart", key=f"chart_button_{i}"):
-                                st.session_state['show_chart'] = not st.session_state['show_chart']
-                            
-                            if st.session_state['show_chart'] and st.session_state['current_df'] is not None:
-                                fig = generate_chart(st.session_state['current_df'].head(1000))
-                                if fig:
-                                    st.plotly_chart(fig, use_container_width=True)
-                                else:
-                                    st.warning("Could not generate chart for this data structure")
-                        
-                        result_response = f"Query executed successfully. {len(result_df)} rows returned."
-                        handle_interaction(question, result_response)
-                    except Exception as e:
-                        logging.error(f"Error processing query: {str(e)}")
-                        info_placeholder.error(f"An error occurred while processing your query: {str(e)}")
-
-    # Add some spacing for better UI
     st.markdown("<br><br>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
