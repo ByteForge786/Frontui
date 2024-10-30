@@ -60,27 +60,39 @@ def generate_session_id():
 # Initialize app
 def init_app():
     init_csv()
+    
+    # Initialize basic session state variables
     if 'chat' not in st.session_state:
-        st.session_state['chat'] = {"user_input": None, "bot_response_1": None, "bot_response_2": None}
+        st.session_state['chat'] = {
+            "user_input": None, 
+            "bot_response_1": None, 
+            "bot_response_2": None,
+            "current_df": None,
+            "current_sql": None,
+            "current_question": None
+        }
     if 'session_id' not in st.session_state:
         st.session_state['session_id'] = generate_session_id()
     if 'last_question' not in st.session_state:
         st.session_state['last_question'] = None
     if 'last_sql' not in st.session_state:
         st.session_state['last_sql'] = None
-    if 'show_chart' not in st.session_state:
-        st.session_state['show_chart'] = False
+    if 'chart_visible' not in st.session_state:
+        st.session_state['chart_visible'] = False
     if 'current_df' not in st.session_state:
         st.session_state['current_df'] = None
-    # Add these new session states
-    if 'chat_history' not in st.session_state:
-        st.session_state['chat_history'] = []
-    if 'current_result' not in st.session_state:
-        st.session_state['current_result'] = None
+    if 'user_messages' not in st.session_state:
+        st.session_state['user_messages'] = []
+    if 'assistant_messages' not in st.session_state:
+        st.session_state['assistant_messages'] = []
+    if 'current_display' not in st.session_state:
+        st.session_state['current_display'] = None
 
-# Toggle chart visibility without losing state
-def toggle_chart():
-    st.session_state['show_chart'] = not st.session_state['show_chart']
+def toggle_chart_visibility():
+    if 'chart_visible' in st.session_state:
+        st.session_state['chart_visible'] = not st.session_state['chart_visible']
+    else:
+        st.session_state['chart_visible'] = True
 
 # Generate chart based on data
 def generate_chart(df):
@@ -133,32 +145,6 @@ def handle_interaction(question, result):
     append_to_csv(new_data)
     st.session_state['last_question'] = question.strip().replace('\n', ' ')
 
-# Process query and update session state
-def process_query(question):
-    try:
-        sql_response = generate_sql(question)
-        st.session_state['last_sql'] = sql_response
-        result_df = execute_query(sql_response)
-        st.session_state['current_df'] = result_df
-        
-        df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)
-        
-        # Store the current result in session state
-        st.session_state['current_result'] = {
-            'question': question,
-            'sql': sql_response,
-            'df': result_df,
-            'df_size': df_size
-        }
-        
-        result_response = f"Query executed successfully. {len(result_df)} rows returned."
-        handle_interaction(question, result_response)
-        
-        return True
-    except Exception as e:
-        logging.error(f"Error processing query: {str(e)}")
-        return False
-
 # Generate a zip file containing the CSV file
 def generate_zip_file():
     if st.session_state['last_sql']:
@@ -169,11 +155,11 @@ def generate_zip_file():
         os.makedirs(ZIP_FOLDER, exist_ok=True)
 
         result_df.to_csv(temp_file_path, index=False)
-        
+
         zip_file_path = os.path.join(ZIP_FOLDER, zip_filename)
         with zipfile.ZipFile(zip_file_path, 'w') as zipf:
             zipf.write(temp_file_path, arcname=filename)
-        
+
         os.remove(temp_file_path)
         return zip_file_path
     return None
@@ -189,36 +175,82 @@ def create_download_button(file_path):
                 mime="application/zip"
             )
 
-# Display current result
-def display_current_result(bot_response_1_placeholder, bot_response_2_placeholder, 
-                         info_placeholder, download_placeholder, chart_container):
-    if st.session_state['current_result']:
-        result = st.session_state['current_result']
-        bot_response_1_placeholder.code(result['sql'], language="sql")
-        
-        if result['df_size'] > SIZE_LIMIT_MB:
-            limited_result = result['df'].head(MAX_ROWS_DISPLAY)
-            bot_response_2_placeholder.dataframe(limited_result)
-            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result['df'])} total rows. Total size: {result['df_size']:.2f} MB")
+def update_feedback(feedback_type, question):
+    try:
+        df = pd.read_csv(CSV_FILE)
+        mask = df['question'] == question
+        if feedback_type == 'upvote':
+            df.loc[mask, 'upvote'] += 1
         else:
-            bot_response_2_placeholder.dataframe(result['df'])
-            info_placeholder.info(f"Showing all rows. Total size: {result['df_size']:.2f} MB")
+            df.loc[mask, 'downvote'] += 1
+        df.to_csv(CSV_FILE, index=False)
+        return True
+    except Exception as e:
+        logging.error(f"Error updating feedback: {str(e)}")
+        return False
+
+def process_and_display_query(question, user_input_placeholder, bot_response_1_placeholder, 
+                            bot_response_2_placeholder, info_placeholder, download_placeholder, 
+                            chart_container):
+    user_input_placeholder.markdown(question)
+    
+    try:
+        # Generate and store SQL
+        sql_response = generate_sql(question)
+        st.session_state['last_sql'] = sql_response
+        st.session_state.chat['current_sql'] = sql_response
+        bot_response_1_placeholder.code(sql_response, language="sql")
         
+        # Execute query and store results
+        result_df = execute_query(sql_response)
+        st.session_state['current_df'] = result_df
+        st.session_state.chat['current_df'] = result_df
+        
+        # Calculate and store size
+        df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)
+        
+        # Display results based on size
+        if df_size > SIZE_LIMIT_MB:
+            limited_result = result_df.head(MAX_ROWS_DISPLAY)
+            bot_response_2_placeholder.dataframe(limited_result)
+            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
+        else:
+            bot_response_2_placeholder.dataframe(result_df)
+            info_placeholder.info(f"Showing all rows. Total size: {df_size:.2f} MB")
+        
+        # Handle download button
         zip_file_path = generate_zip_file()
         if zip_file_path:
             with download_placeholder:
                 create_download_button(zip_file_path)
         
+        # Store the current state
+        st.session_state.chat['current_question'] = question
+        st.session_state['user_messages'].append(question)
+        st.session_state['assistant_messages'].append({
+            'sql': sql_response,
+            'result': result_df,
+            'size': df_size
+        })
+        
+        # Chart container with toggle
         with chart_container:
-            if st.button("📊 Show/Hide Chart", on_click=toggle_chart):
-                pass
+            st.button("📊 Show/Hide Chart", key=f"chart_toggle_{len(st.session_state['user_messages'])}", 
+                     on_click=toggle_chart_visibility)
             
-            if st.session_state['show_chart']:
-                fig = generate_chart(result['df'].head(1000))
+            if st.session_state['chart_visible']:
+                fig = generate_chart(result_df.head(1000))
                 if fig:
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.warning("Could not generate chart for this data structure")
+        
+        result_response = f"Query executed successfully. {len(result_df)} rows returned."
+        handle_interaction(question, result_response)
+        
+    except Exception as e:
+        logging.error(f"Error processing query: {str(e)}")
+        info_placeholder.error(f"An error occurred while processing your query: {str(e)}")
 
 # Main app function
 def main():
@@ -246,12 +278,9 @@ def main():
         with button_column[2]:
             if st.button("🚀 Generate SQL", key="generate_sql", use_container_width=True):
                 if user_input:
-                    user_input_placeholder.markdown(user_input)
-                    if process_query(user_input):
-                        display_current_result(bot_response_1_placeholder, bot_response_2_placeholder,
-                                            info_placeholder, download_placeholder, chart_container)
-                    else:
-                        info_placeholder.error("An error occurred while processing your query.")
+                    process_and_display_query(user_input, user_input_placeholder, 
+                                           bot_response_1_placeholder, bot_response_2_placeholder,
+                                           info_placeholder, download_placeholder, chart_container)
 
         with button_column[1]:
             if st.button("👍 Upvote", key="upvote", use_container_width=True):
@@ -288,12 +317,9 @@ def main():
                 st.markdown(f"<div class='mytext'>{question}</div>", unsafe_allow_html=True)
             with question_columns[1]:
                 if st.button(f"Ask", use_container_width=True, key=f'question{i}'):
-                    user_input_placeholder.markdown(question)
-                    if process_query(question):
-                        display_current_result(bot_response_1_placeholder, bot_response_2_placeholder,
-                                            info_placeholder, download_placeholder, chart_container)
-                    else:
-                        info_placeholder.error("An error occurred while processing your query.")
+                    process_and_display_query(question, user_input_placeholder, 
+                                           bot_response_1_placeholder, bot_response_2_placeholder,
+                                           info_placeholder, download_placeholder, chart_container)
 
     st.markdown("<br><br>", unsafe_allow_html=True)
 
