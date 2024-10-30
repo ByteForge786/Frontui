@@ -15,9 +15,6 @@ import plotly.express as px
 logging.basicConfig(filename='app.log', level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Set page config
-st.set_page_config(page_title="NeuroFlake", layout="wide", initial_sidebar_state="collapsed")
-
 # Constants
 CSV_FILE = 'user_interactions.csv'
 MAX_RETRIES = 3
@@ -25,19 +22,8 @@ MAX_ROWS_DISPLAY = 1000
 ZIP_FOLDER = "zip_downloads"
 SIZE_LIMIT_MB = 190
 
-# Initialize session state
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
-if 'current_df' not in st.session_state:
-    st.session_state.current_df = None
-if 'show_chart' not in st.session_state:
-    st.session_state.show_chart = False
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = hashlib.md5(str(datetime.now()).encode()).hexdigest()
-if 'last_question' not in st.session_state:
-    st.session_state.last_question = None
-if 'last_sql' not in st.session_state:
-    st.session_state.last_sql = None
+# Set page config
+st.set_page_config(page_title="NeuroFlake", layout="wide", initial_sidebar_state="collapsed")
 
 # Initialize CSV file
 def init_csv():
@@ -47,51 +33,23 @@ def init_csv():
 # Load CSV file
 @st.cache_data
 def load_data():
-    for _ in range(MAX_RETRIES):
-        try:
-            return pd.read_csv(CSV_FILE)
-        except pd.errors.EmptyDataError:
+    try:
+        if not os.path.exists(CSV_FILE):
             init_csv()
-        except Exception as e:
-            logging.error(f"Error loading CSV: {str(e)}")
-    return pd.DataFrame()
+        return pd.read_csv(CSV_FILE)
+    except Exception as e:
+        logging.error(f"Error loading CSV: {str(e)}")
+        return pd.DataFrame()
 
 # Append data to CSV
 def append_to_csv(new_data):
-    for _ in range(MAX_RETRIES):
-        try:
-            with open(CSV_FILE, 'a', newline='') as f:
-                new_data.to_csv(f, header=f.tell()==0, index=False)
-            return True
-        except Exception as e:
-            logging.error(f"Error appending to CSV: {str(e)}")
-    return False
-
-# Mock function for SQL generation
-def generate_sql(question):
-    return f"SELECT * FROM sample_table WHERE condition = '{question}';"
-
-# Mock function for query execution
-def execute_query(sql):
-    n_rows = 10000000  # Increased for testing large datasets
-    return pd.DataFrame({
-        'id': range(n_rows),
-        'value': np.random.rand(n_rows),
-        'category': np.random.choice(['A', 'B', 'C', 'D'], n_rows)
-    })
-
-# Handle user interaction
-def handle_interaction(question, result):
-    new_data = pd.DataFrame({
-        'timestamp': [datetime.now()],
-        'question': [question.strip().replace('\n', ' ')],
-        'result': [result.strip().replace('\n', ' ')],
-        'upvote': [0],
-        'downvote': [0],
-        'session_id': [st.session_state.session_id]
-    })
-    append_to_csv(new_data)
-    st.session_state.last_question = question.strip().replace('\n', ' ')
+    try:
+        with open(CSV_FILE, 'a', newline='') as f:
+            new_data.to_csv(f, header=f.tell()==0, index=False)
+        return True
+    except Exception as e:
+        logging.error(f"Error appending to CSV: {str(e)}")
+        return False
 
 # Generate chart based on data
 def generate_chart(df):
@@ -118,187 +76,158 @@ def generate_chart(df):
         logging.error(f"Error generating chart: {str(e)}")
         return None
 
-# Process query and update chat
-def process_query(question, user_input_placeholder, bot_response_1_placeholder, 
-                 bot_response_2_placeholder, info_placeholder, download_placeholder,
-                 chart_container):
+# Mock function for SQL generation
+def generate_sql(question):
+    return f"SELECT * FROM sample_table WHERE condition = '{question}';"
+
+# Mock function for query execution
+def execute_query(sql):
+    n_rows = 100  # Reduced for demo purposes
+    return pd.DataFrame({
+        'id': range(n_rows),
+        'value': np.random.rand(n_rows),
+        'category': np.random.choice(['A', 'B', 'C', 'D'], n_rows)
+    })
+
+# Handle user interaction
+def handle_interaction(question, result):
+    if not question:
+        return
+        
+    new_data = pd.DataFrame({
+        'timestamp': [datetime.now()],
+        'question': [question.strip().replace('\n', ' ')],
+        'result': [result.strip().replace('\n', ' ')],
+        'upvote': [0],
+        'downvote': [0],
+        'session_id': [st.session_state.get('session_id', '')]
+    })
+    append_to_csv(new_data)
+
+def process_query(question):
+    if not question:
+        return None
+        
     try:
         # Generate SQL
         sql_response = generate_sql(question)
-        st.session_state.last_sql = sql_response
         
         # Execute query
         result_df = execute_query(sql_response)
-        st.session_state.current_df = result_df
         
-        # Update chat interface
-        user_input_placeholder.markdown(question)
-        bot_response_1_placeholder.code(sql_response, language="sql")
-        
-        # Handle large datasets
+        # Calculate size
         df_size = result_df.memory_usage(deep=True).sum() / (1024 * 1024)
-        if df_size > SIZE_LIMIT_MB:
-            limited_result = result_df.head(MAX_ROWS_DISPLAY)
-            bot_response_2_placeholder.dataframe(limited_result)
-            info_placeholder.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(result_df)} total rows. Total size: {df_size:.2f} MB")
-        else:
-            bot_response_2_placeholder.dataframe(result_df)
-            info_placeholder.info(f"Showing all rows. Total size: {df_size:.2f} MB")
         
-        # Create download button
-        filename = f"result_{uuid.uuid4().hex}.csv"
-        download_placeholder.download_button(
-            label="Download full CSV",
-            data=result_df.to_csv(index=False).encode('utf-8'),
-            file_name=filename,
-            mime='text/csv'
-        )
-        
-        # Add chart toggle and display
-        if chart_container.button("📊 Show/Hide Chart", key=f"chart_button_{len(st.session_state.chat_history)}"):
-            st.session_state.show_chart = not st.session_state.show_chart
-        
-        if st.session_state.show_chart:
-            fig = generate_chart(result_df.head(1000))
-            if fig:
-                chart_container.plotly_chart(fig, use_container_width=True)
-            else:
-                chart_container.warning("Could not generate chart for this data structure")
-        
-        # Store in chat history
-        chat_entry = {
-            'question': question,
+        return {
             'sql': sql_response,
-            'result_df': result_df,
+            'df': result_df,
             'df_size': df_size
         }
-        st.session_state.chat_history.append(chat_entry)
-        
-        # Handle interaction
-        result_response = f"Query executed successfully. {len(result_df)} rows returned."
-        handle_interaction(question, result_response)
-        
     except Exception as e:
         logging.error(f"Error processing query: {str(e)}")
-        info_placeholder.error(f"An error occurred while processing your query: {str(e)}")
+        st.error(f"An error occurred while processing your query: {str(e)}")
+        return None
+
+def display_result(result):
+    if not result:
+        return
+        
+    # Display SQL
+    st.code(result['sql'], language="sql")
+    
+    # Display results
+    df = result['df']
+    df_size = result['df_size']
+    
+    if df_size > SIZE_LIMIT_MB:
+        st.dataframe(df.head(MAX_ROWS_DISPLAY))
+        st.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(df)} total rows. Total size: {df_size:.2f} MB")
+    else:
+        st.dataframe(df)
+        st.info(f"Showing all {len(df)} rows. Total size: {df_size:.2f} MB")
+    
+    # Generate and display chart
+    fig = generate_chart(df.head(1000))
+    if fig:
+        st.plotly_chart(fig, use_container_width=True)
+
+def update_feedback(feedback_type, question):
+    try:
+        df = pd.read_csv(CSV_FILE)
+        mask = df['question'] == question
+        if feedback_type == 'upvote':
+            df.loc[mask, 'upvote'] += 1
+        else:
+            df.loc[mask, 'downvote'] += 1
+        df.to_csv(CSV_FILE, index=False)
+        return True
+    except Exception as e:
+        logging.error(f"Error updating feedback: {str(e)}")
+        return False
 
 def main():
     st.markdown('## NeuroFlake: AI-Powered Text-to-SQL for Snowflake')
     
-    left_column, right_column = st.columns(2, gap="large")
+    # Initialize session state
+    if 'session_id' not in st.session_state:
+        st.session_state['session_id'] = hashlib.md5(str(datetime.now()).encode()).hexdigest()
+    if 'last_question' not in st.session_state:
+        st.session_state['last_question'] = None
+    if 'current_result' not in st.session_state:
+        st.session_state['current_result'] = None
+
+    # Input section
+    user_input = st.text_area("Enter your question about the data:")
+
+    # Button columns
+    col1, col2, col3 = st.columns(3)
     
-    with right_column.container():
-        # Create containers for chat messages
-        chat_container = st.container()
-        
-        # Display chat history
-        with chat_container:
-            for i, chat in enumerate(st.session_state.chat_history):
-                with st.chat_message(name="user", avatar="user"):
-                    st.markdown(chat['question'])
-                with st.chat_message(name="assistant", avatar="assistant"):
-                    st.code(chat['sql'], language="sql")
-                    if chat['df_size'] > SIZE_LIMIT_MB:
-                        st.dataframe(chat['result_df'].head(MAX_ROWS_DISPLAY))
-                        st.info(f"Showing first {MAX_ROWS_DISPLAY} rows of {len(chat['result_df'])} total rows. Total size: {chat['df_size']:.2f} MB")
-                    else:
-                        st.dataframe(chat['result_df'])
-                        st.info(f"Showing all rows. Total size: {chat['df_size']:.2f} MB")
-                    
-                    # Download button for each chat entry
-                    filename = f"result_{i}.csv"
-                    st.download_button(
-                        label="Download full CSV",
-                        data=chat['result_df'].to_csv(index=False).encode('utf-8'),
-                        file_name=filename,
-                        mime='text/csv'
-                    )
-                    
-                    # Chart container for each chat entry
-                    chart_cont = st.container()
-                    if chart_cont.button("📊 Show/Hide Chart", key=f"chart_button_{i}"):
-                        if f'show_chart_{i}' not in st.session_state:
-                            st.session_state[f'show_chart_{i}'] = True
-                        else:
-                            st.session_state[f'show_chart_{i}'] = not st.session_state[f'show_chart_{i}']
-                    
-                    if st.session_state.get(f'show_chart_{i}', False):
-                        fig = generate_chart(chat['result_df'].head(1000))
-                        if fig:
-                            chart_cont.plotly_chart(fig, use_container_width=True)
-                        else:
-                            chart_cont.warning("Could not generate chart for this data structure")
-        
-        # Input area
-        user_input = st.text_area("Enter your question about the data:")
-        
-        # Create placeholders for new messages
-        new_message_container = st.container()
-        with new_message_container:
-            user_placeholder = st.empty()
-            bot_sql_placeholder = st.empty()
-            bot_result_placeholder = st.empty()
-            info_placeholder = st.empty()
-            download_placeholder = st.empty()
-            chart_container = st.empty()
-        
-        # Buttons
-        button_column = st.columns(3)
-        button_info = st.empty()
-        
-        with button_column[2]:
-            if st.button("🚀 Generate SQL", key="generate_sql", use_container_width=True):
-                if user_input:
-                    process_query(
-                        user_input,
-                        user_placeholder,
-                        bot_sql_placeholder,
-                        bot_result_placeholder,
-                        info_placeholder,
-                        download_placeholder,
-                        chart_container
-                    )
-        
-        # Feedback buttons
-        with button_column[1]:
-            if st.button("👍 Upvote", key="upvote", use_container_width=True):
-                if st.session_state.last_question:
-                    button_info.success("Thanks for your feedback! NeuroFlake Memory updated")
-                else:
-                    button_info.warning("No recent question to upvote.")
-        
-        with button_column[0]:
-            if st.button("👎 Downvote", key="downvote", use_container_width=True):
-                if st.session_state.last_question:
-                    button_info.warning("We're sorry the result wasn't helpful. Your feedback will help us improve!")
-                else:
-                    button_info.warning("No recent question to downvote.")
-        
-        # Sample questions
-        st.markdown("##### Sample questions you can ask:")
-        sample_questions = [
-            "What is the total revenue for each product category?",
-            "Who are the top 5 customers by sales volume?",
-            "What's the average order value by month?",
-            "Which regions have seen the highest growth in the last quarter?",
-            "What's the distribution of customer segments across different product lines?"
-        ]
-        
-        for i, question in enumerate(sample_questions):
-            question_columns = st.columns([7,1])
-            with question_columns[0]:
-                st.markdown(f"<div class='mytext'>{question}</div>", unsafe_allow_html=True)
-            with question_columns[1]:
-                if st.button(f"Ask", use_container_width=True, key=f'question{i}'):
-                    process_query(
-                        question,
-                        user_placeholder,
-                        bot_sql_placeholder,
-                        bot_result_placeholder,
-                        info_placeholder,
-                        download_placeholder,
-                        chart_container
-                    )
+    with col3:
+        if st.button("🚀 Generate SQL", use_container_width=True):
+            st.session_state['current_result'] = process_query(user_input)
+            if st.session_state['current_result']:
+                st.session_state['last_question'] = user_input
+                handle_interaction(user_input, "Query executed successfully")
+                st.experimental_rerun()
+
+    with col2:
+        if st.button("👍 Upvote", use_container_width=True):
+            if st.session_state.get('last_question'):
+                if update_feedback('upvote', st.session_state['last_question']):
+                    st.success("Thanks for your feedback!")
+
+    with col1:
+        if st.button("👎 Downvote", use_container_width=True):
+            if st.session_state.get('last_question'):
+                if update_feedback('downvote', st.session_state['last_question']):
+                    st.warning("Thanks for your feedback!")
+
+    # Display current result if exists
+    if st.session_state.get('current_result'):
+        with st.chat_message(name="assistant", avatar="assistant"):
+            display_result(st.session_state['current_result'])
+
+    # Sample questions
+    st.markdown("##### Sample questions you can ask:")
+    sample_questions = [
+        "What is the total revenue for each product category?",
+        "Who are the top 5 customers by sales volume?",
+        "What's the average order value by month?",
+        "Which regions have seen the highest growth in the last quarter?",
+        "What's the distribution of customer segments across different product lines?"
+    ]
+    
+    for i, question in enumerate(sample_questions):
+        col1, col2 = st.columns([7,1])
+        with col1:
+            st.markdown(f"{question}")
+        with col2:
+            if st.button("Ask", key=f"ask_{i}", use_container_width=True):
+                st.session_state['current_result'] = process_query(question)
+                if st.session_state['current_result']:
+                    st.session_state['last_question'] = question
+                    handle_interaction(question, "Query executed successfully")
+                    st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
